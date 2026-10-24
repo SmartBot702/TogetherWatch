@@ -15,6 +15,7 @@ jobs:
       - run: npm install
       - run: node --check server.js
       - run: node --check public/app.js
+      - run: node --check public/i18n.js
       - name: Smoke test HTTP server
         run: |
           npm start > /tmp/togetherwatch.log 2>&1 &
