@@ -15,4 +15,14 @@ jobs:
       - run: npm install
       - run: node --check server.js
       - run: node --check public/app.js
-      - run: node -e "const p=require('./package.json'); if(!p.scripts.start || !p.dependencies.express || !p.dependencies['socket.io']) process.exit(1)"
+      - name: Smoke test HTTP server
+        run: |
+          npm start > /tmp/togetherwatch.log 2>&1 &
+          APP_PID=$!
+          trap 'kill $APP_PID 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent http://127.0.0.1:3000/health; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/togetherwatch.log
+          exit 1
