@@ -63,6 +63,7 @@ function leave(socket) {
   socket.data.roomId = null;
   if (!r) return;
   const m = r.members.get(socket.id);
+  io.to(id).emit('rtc:ready', { from: socket.id, ready: false });
   r.members.delete(socket.id);
   if (m) io.to(id).emit('room:system', m.name + ' xonadan chiqdi.');
   if (r.hostId === socket.id) {
@@ -142,17 +143,21 @@ io.on('connection', socket => {
   socket.on('rtc:offer', p => {
     const id = socket.data.roomId, r = rooms.get(id), to = p && p.to;
     if (!r || !r.members.has(socket.id) || !r.members.has(to) || !p.offer) return;
-    io.to(to).emit('rtc:offer', { from: socket.id, offer: p.offer });
+    io.to(to).emit('rtc:offer', { from: socket.id, kind: p.kind === 'call' ? 'call' : 'screen', offer: p.offer });
   });
   socket.on('rtc:answer', p => {
     const id = socket.data.roomId, r = rooms.get(id), to = p && p.to;
     if (!r || !r.members.has(socket.id) || !r.members.has(to) || !p.answer) return;
-    io.to(to).emit('rtc:answer', { from: socket.id, answer: p.answer });
+    io.to(to).emit('rtc:answer', { from: socket.id, kind: p.kind === 'call' ? 'call' : 'screen', answer: p.answer });
   });
   socket.on('rtc:ice', p => {
     const id = socket.data.roomId, r = rooms.get(id), to = p && p.to;
     if (!r || !r.members.has(socket.id) || !r.members.has(to) || !p.candidate) return;
-    io.to(to).emit('rtc:ice', { from: socket.id, candidate: p.candidate });
+    io.to(to).emit('rtc:ice', { from: socket.id, kind: p.kind === 'call' ? 'call' : 'screen', candidate: p.candidate });
+  });
+  socket.on('rtc:ready', p => {
+    const id = socket.data.roomId, r = rooms.get(id);
+    if (r && r.members.has(socket.id)) socket.to(id).emit('rtc:ready', { from: socket.id, ready: Boolean(p && p.ready) });
   });
   socket.on('screen:stop', () => {
     const id = socket.data.roomId, r = rooms.get(id);
