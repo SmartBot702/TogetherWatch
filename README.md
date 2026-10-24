@@ -1,6 +1,6 @@
 # TogetherWatch
 
-A real-time watch-party web app: create rooms, invite friends with a six-character code or URL, chat live, and synchronize a YouTube video.
+A real-time watch-party web app: create rooms, invite friends with a six-character code or URL, chat live, and synchronize YouTube, Vimeo, or direct MP4/WebM video links.
 
 ## Run locally
 Requires Node.js 18+.
@@ -10,7 +10,7 @@ npm install
 npm start
 \`\`\`
 
-Open http://localhost:3000. Test with two browser tabs or devices. Choose a YouTube video that permits embedding.
+Open http://localhost:3000. Test with two browser tabs or devices. Use a YouTube or Vimeo video that permits embedding, or a direct HTTPS/HTTP MP4/WebM file URL. Vimeo privacy and embedding settings still apply.
 
 ## Deploy to Render
 1. Push this repository to GitHub.
@@ -20,7 +20,7 @@ Open http://localhost:3000. Test with two browser tabs or devices. Choose a YouT
 ## Included
 - Responsive Uzbek UI
 - Room creation/joining, 6-character invite codes and shareable links
-- Host-controlled YouTube playback and best-effort sync
+- Host-controlled synchronized playback for YouTube, Vimeo, and direct MP4/WebM URLs (best effort)
 - Room member list and real-time chat
 - \`/health\` health endpoint
 
