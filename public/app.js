@@ -1,7 +1,7 @@
 (function(){
 const $=id=>document.getElementById(id);
 const socket=io();
-let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0;
+let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null;const peers=new Map();
 
 socket.on('connect',()=>{$('connection').textContent='● Serverga ulandi'});
 socket.on('disconnect',()=>{$('connection').textContent='● Aloqa uzildi'});
@@ -23,16 +23,18 @@ socket.on('room:joined',d=>{
   roomId=d.roomId;isHost=d.isHost;
   $('entry').classList.add('hidden');$('how').classList.add('hidden');$('workspace').classList.remove('hidden');
   $('roomCode').textContent=roomId;$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
-  $('loadVideo').disabled=!isHost;$('youtubeUrl').disabled=!isHost;$('chat').innerHTML='';
+  $('loadVideo').disabled=!isHost;$('youtubeUrl').disabled=!isHost;$('mediaType').disabled=!isHost;$('screenShare').disabled=!isHost;$('chat').innerHTML='';
   history.replaceState({},'',location.pathname+'?room='+roomId);
   if(d.state&&(d.state.mediaType||d.state.videoId))loadMedia(normalizeState(d.state),d.state);
 });
 socket.on('room:role',d=>{
   isHost=d.isHost;$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
-  $('loadVideo').disabled=!isHost;$('youtubeUrl').disabled=!isHost;
+  $('loadVideo').disabled=!isHost;$('youtubeUrl').disabled=!isHost;$('mediaType').disabled=!isHost;$('screenShare').disabled=!isHost;
   ['playPause','back','forward'].forEach(id=>$(id).disabled=!isHost||!playerReady);
 });
 socket.on('room:people',list=>{
+  roomPeople=list;
+  if(screenStream&&isHost)syncScreenPeers();
   $('peopleCount').textContent=list.length;$('people').replaceChildren();
   list.forEach(p=>{const el=document.createElement('span');el.className='person';el.textContent=p.name+(p.isHost?' ★':'');$('people').append(el)});
 });
@@ -50,6 +52,8 @@ $('copyInvite').onclick=async()=>{
   catch(e){prompt('Havolani nusxalang',u)}
 };
 $('leaveRoom').onclick=()=>{
+  if(screenStream)stopScreenShare();
+  for(const id of Array.from(peers.keys()))removePeer(id);
   socket.emit('room:leave');destroyPlayer();roomId=null;history.replaceState({},'',location.pathname);
   $('workspace').classList.add('hidden');$('entry').classList.remove('hidden');$('how').classList.remove('hidden');
 };
@@ -64,12 +68,13 @@ function parseMedia(raw){
       if(u.pathname==='/watch')id=u.searchParams.get('v');
       else if(u.pathname.startsWith('/embed/')||u.pathname.startsWith('/shorts/'))id=u.pathname.split('/')[2]||null;
     }
-    if(id&&/^[A-Za-z0-9_-]{11}$/.test(id))return{mediaType:'youtube',mediaId:id,mediaUrl:'https://www.youtube.com/watch?v='+id,videoId:id};
-    if(host==='vimeo.com'||host==='player.vimeo.com'){
+    const requested=$('mediaType').value;
+    if(id&&/^[A-Za-z0-9_-]{11}$/.test(id)&&(requested==='auto'||requested==='youtube'))return{mediaType:'youtube',mediaId:id,mediaUrl:'https://www.youtube.com/watch?v='+id,videoId:id};
+    if((host==='vimeo.com'||host==='player.vimeo.com')&&($('mediaType').value==='auto'||$('mediaType').value==='vimeo')){
       const parts=u.pathname.split('/').filter(Boolean);id=parts.find(x=>/^\d{1,15}$/.test(x))||null;
       if(id)return{mediaType:'vimeo',mediaId:id,mediaUrl:'https://player.vimeo.com/video/'+id,videoId:null};
     }
-    if(/\.(mp4|webm)$/i.test(u.pathname))return{mediaType:'file',mediaId:u.href,mediaUrl:u.href,videoId:null};
+    if(($('mediaType').value==='auto'||$('mediaType').value==='file')&&/\.(mp4|webm)$/i.test(u.pathname))return{mediaType:'file',mediaId:u.href,mediaUrl:u.href,videoId:null};
     return null;
   }catch(e){return null}
 }
@@ -163,7 +168,7 @@ async function applyState(s){
 }
 $('loadVideo').onclick=()=>{
   const next=parseMedia($('youtubeUrl').value.trim());
-  if(!next){$('videoError').textContent='YouTube, Vimeo yoki to‘g‘ridan-to‘g‘ri MP4/WebM havolasini kiriting.';return}
+  if(!next){$('videoError').textContent='Manbani tanlang va shu manbaga mos to‘liq havolani kiriting. MP4/WebM uchun video faylning bevosita URL manzili kerak.';return}
   socket.emit('video:load',next);
 };
 socket.on('video:loaded',s=>{const next=normalizeState(s);if(next)loadMedia(next,s)});
@@ -184,6 +189,98 @@ setInterval(async()=>{
   if(isHost&&roomId&&playerReady&&media&&await isPlaying())emitPlayback(true,await getTimeAsync());
 },2500);
 socket.on('room:state',s=>{const next=s&&normalizeState(s);if(next){$('youtubeUrl').value=next.mediaUrl;loadMedia(next,s)}});
+
+function createPeer(peerId,initiator){
+  if(peers.has(peerId))return peers.get(peerId);
+  const pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+  peers.set(peerId,pc);
+  if(screenStream&&initiator)screenStream.getTracks().forEach(track=>pc.addTrack(track,screenStream));
+  pc.onicecandidate=e=>{if(e.candidate&&roomId)socket.emit('rtc:ice',{to:peerId,candidate:e.candidate})};
+  pc.ontrack=e=>{
+    if(e.streams&&e.streams[0]){
+      $('sharedScreen').srcObject=e.streams[0];
+      $('sharedScreenWrap').classList.remove('hidden');
+      $('screenStatus').textContent='Xona egasining ekrani uzatilmoqda.';
+    }
+  };
+  pc.onconnectionstatechange=()=>{
+    if(['failed','closed'].includes(pc.connectionState))removePeer(peerId);
+  };
+  return pc;
+}
+async function syncScreenPeers(){
+  if(!screenStream||!isHost||!roomId)return;
+  for(const person of roomPeople){
+    if(person.id===socket.id||peers.has(person.id))continue;
+    try{
+      const pc=createPeer(person.id,true);
+      const offer=await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      socket.emit('rtc:offer',{to:person.id,offer:pc.localDescription});
+    }catch(e){removePeer(person.id)}
+  }
+}
+function removePeer(peerId){
+  const pc=peers.get(peerId);
+  if(pc){try{pc.close()}catch(e){}peers.delete(peerId)}
+}
+socket.on('rtc:offer',async p=>{
+  if(!roomId||!p||!p.from||!p.offer)return;
+  try{
+    const pc=createPeer(p.from,false);
+    await pc.setRemoteDescription(new RTCSessionDescription(p.offer));
+    const answer=await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    socket.emit('rtc:answer',{to:p.from,answer:pc.localDescription});
+  }catch(e){removePeer(p.from);$('videoError').textContent='Ekran ulanishida xatolik. Qayta urinib ko‘ring.'}
+});
+socket.on('rtc:answer',async p=>{
+  const pc=p&&peers.get(p.from);if(!pc||!p.answer)return;
+  try{await pc.setRemoteDescription(new RTCSessionDescription(p.answer))}catch(e){}
+});
+socket.on('rtc:ice',async p=>{
+  const pc=p&&peers.get(p.from);if(!pc||!p.candidate)return;
+  try{await pc.addIceCandidate(new RTCIceCandidate(p.candidate))}catch(e){}
+});
+socket.on('screen:stop',p=>{
+  if(!p||p.from===socket.id)return;
+  removePeer(p.from);
+  $('sharedScreen').srcObject=null;
+  $('sharedScreenWrap').classList.add('hidden');
+  $('screenStatus').textContent='Ekran ulashish to‘xtatildi.';
+});
+async function stopScreenShare(){
+  if(screenStream){
+    socket.emit('screen:stop');
+    screenStream.getTracks().forEach(t=>{try{t.stop()}catch(e){}});
+    screenStream=null;
+  }
+  for(const id of Array.from(peers.keys()))removePeer(id);
+  $('sharedScreen').srcObject=null;
+  $('sharedScreenWrap').classList.add('hidden');
+  $('screenShare').classList.remove('hidden');
+  $('stopScreenShare').classList.add('hidden');
+  $('screenStatus').textContent='Ekran ulashish to‘xtatildi.';
+}
+$('screenShare').onclick=async()=>{
+  if(!isHost){$('screenStatus').textContent='Ekranni faqat xona egasi ulashishi mumkin.';return}
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia){$('screenStatus').textContent='Bu brauzer ekran ulashishni qo‘llamaydi. Kompyuterdagi Chrome yoki Edge’da urinib ko‘ring.';return}
+  try{
+    screenStream=await navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
+    $('sharedScreen').srcObject=screenStream;
+    $('sharedScreenWrap').classList.remove('hidden');
+    $('screenShare').classList.add('hidden');
+    $('stopScreenShare').classList.remove('hidden');
+    $('screenStatus').textContent='Ekraningiz ulashilmoqda. Ovoz uzatilishi brauzer va tanlangan tabga bog‘liq.';
+    screenStream.getTracks().forEach(t=>t.addEventListener('ended',stopScreenShare,{once:true}));
+    await syncScreenPeers();
+  }catch(e){
+    screenStream=null;
+    $('screenStatus').textContent='Ekran ulashish bekor qilindi yoki ruxsat berilmadi.';
+  }
+};
+$('stopScreenShare').onclick=stopScreenShare;
+
 const r=new URLSearchParams(location.search).get('room');if(r)$('roomInput').value=r.toUpperCase();
 $('year').textContent=new Date().getFullYear();
 })();
