@@ -46,7 +46,6 @@ function enter(socket, id, name, create) {
   socket.join(id); socket.data.roomId = id; socket.data.name = name; r.members.set(socket.id, { id: socket.id, name });
   socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, state: r.state });
   socket.to(id).emit('room:system', name + ' xonaga qo‘shildi.'); broadcastPeople(id);
-  if (r.state.videoId) socket.emit('room:state', r.state);
 }
 io.on('connection', socket => {
   socket.on('room:create', p => { leave(socket); const n = cleanName(p && p.name); if (!n) return error(socket, 'Ismingizni kiriting.'); let id; do { id = makeCode(); } while (rooms.has(id)); enter(socket, id, n, true); });
