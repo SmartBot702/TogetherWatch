@@ -1,7 +1,7 @@
 (function(){
 const $=id=>document.getElementById(id);
 const socket=io();
-let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null;const peers=new Map();
+let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null,callStream=null;const peers=new Map(),callPeers=new Map(),callReady=new Set();
 
 socket.on('connect',()=>{$('connection').textContent='● Serverga ulandi'});
 socket.on('disconnect',()=>{$('connection').textContent='● Aloqa uzildi'});
@@ -34,7 +34,12 @@ socket.on('room:role',d=>{
 });
 socket.on('room:people',list=>{
   roomPeople=list;
+  const memberIds=new Set(list.map(p=>p.id));
+  for(const id of Array.from(peers.keys()))if(!memberIds.has(id))removePeer(id);
+  for(const id of Array.from(callPeers.keys()))if(!memberIds.has(id))removeCallPeer(id);
+  for(const id of Array.from(callReady))if(!memberIds.has(id))callReady.delete(id);
   if(screenStream&&isHost)syncScreenPeers();
+  if(callStream)syncCallPeers();
   $('peopleCount').textContent=list.length;$('people').replaceChildren();
   list.forEach(p=>{const el=document.createElement('span');el.className='person';el.textContent=p.name+(p.isHost?' ★':'');$('people').append(el)});
 });
@@ -53,7 +58,9 @@ $('copyInvite').onclick=async()=>{
 };
 $('leaveRoom').onclick=()=>{
   if(screenStream)stopScreenShare();
+  if(callStream)stopCall();
   for(const id of Array.from(peers.keys()))removePeer(id);
+  for(const id of Array.from(callPeers.keys()))removeCallPeer(id);
   socket.emit('room:leave');destroyPlayer();roomId=null;history.replaceState({},'',location.pathname);
   $('workspace').classList.add('hidden');$('entry').classList.remove('hidden');$('how').classList.remove('hidden');
 };
@@ -195,7 +202,7 @@ function createPeer(peerId,initiator){
   const pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
   peers.set(peerId,pc);
   if(screenStream&&initiator)screenStream.getTracks().forEach(track=>pc.addTrack(track,screenStream));
-  pc.onicecandidate=e=>{if(e.candidate&&roomId)socket.emit('rtc:ice',{to:peerId,candidate:e.candidate})};
+  pc.onicecandidate=e=>{if(e.candidate&&roomId)socket.emit('rtc:ice',{to:peerId,kind:'screen',candidate:e.candidate})};
   pc.ontrack=e=>{
     if(e.streams&&e.streams[0]){
       $('sharedScreen').srcObject=e.streams[0];
@@ -216,7 +223,7 @@ async function syncScreenPeers(){
       const pc=createPeer(person.id,true);
       const offer=await pc.createOffer();
       await pc.setLocalDescription(offer);
-      socket.emit('rtc:offer',{to:person.id,offer:pc.localDescription});
+      socket.emit('rtc:offer',{to:person.id,kind:'screen',offer:pc.localDescription});
     }catch(e){removePeer(person.id)}
   }
 }
@@ -225,23 +232,100 @@ function removePeer(peerId){
   if(pc){try{pc.close()}catch(e){}peers.delete(peerId)}
 }
 socket.on('rtc:offer',async p=>{
+  if(p&&p.kind==='call'){await answerCallOffer(p);return;}
   if(!roomId||!p||!p.from||!p.offer)return;
   try{
     const pc=createPeer(p.from,false);
     await pc.setRemoteDescription(new RTCSessionDescription(p.offer));
     const answer=await pc.createAnswer();
     await pc.setLocalDescription(answer);
-    socket.emit('rtc:answer',{to:p.from,answer:pc.localDescription});
+    socket.emit('rtc:answer',{to:p.from,kind:'screen',answer:pc.localDescription});
   }catch(e){removePeer(p.from);$('videoError').textContent='Ekran ulanishida xatolik. Qayta urinib ko‘ring.'}
 });
 socket.on('rtc:answer',async p=>{
-  const pc=p&&peers.get(p.from);if(!pc||!p.answer)return;
+  const pc=p&&p.kind==='call'?callPeers.get(p.from):p&&peers.get(p.from);if(!pc||!p.answer)return;
   try{await pc.setRemoteDescription(new RTCSessionDescription(p.answer))}catch(e){}
 });
 socket.on('rtc:ice',async p=>{
-  const pc=p&&peers.get(p.from);if(!pc||!p.candidate)return;
+  const pc=p&&p.kind==='call'?callPeers.get(p.from):p&&peers.get(p.from);if(!pc||!p.candidate)return;
   try{await pc.addIceCandidate(new RTCIceCandidate(p.candidate))}catch(e){}
 });
+
+function callPeer(peerId,initiator){
+  if(callPeers.has(peerId))return callPeers.get(peerId);
+  const pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+  callPeers.set(peerId,pc);
+  if(callStream&&initiator)callStream.getTracks().forEach(track=>pc.addTrack(track,callStream));
+  pc.onicecandidate=e=>{if(e.candidate)socket.emit('rtc:ice',{to:peerId,kind:'call',candidate:e.candidate})};
+  pc.ontrack=e=>{
+    if(!e.streams||!e.streams[0])return;
+    let video=document.getElementById('call-'+peerId);
+    if(!video){
+      const person=roomPeople.find(p=>p.id===peerId);
+      const wrap=document.createElement('div');wrap.className='person';wrap.style.width='min(220px,100%)';wrap.style.padding='8px';
+      const label=document.createElement('div');label.textContent=person?person.name:'Ishtirokchi';label.style.marginBottom='5px';
+      video=document.createElement('video');video.id='call-'+peerId;video.autoplay=true;video.playsInline=true;video.style.width='100%';video.style.borderRadius='8px';video.style.background='#000';
+      wrap.append(label,video);$('callGrid').append(wrap);
+    }
+    video.srcObject=e.streams[0];video.play().catch(()=>{});
+  };
+  pc.onconnectionstatechange=()=>{if(['failed','closed'].includes(pc.connectionState))removeCallPeer(peerId)};
+  return pc;
+}
+async function syncCallPeers(){
+  if(!callStream||!roomId)return;
+  for(const person of roomPeople){
+    if(person.id===socket.id||!callReady.has(person.id)||callPeers.has(person.id))continue;
+    if(socket.id.localeCompare(person.id)<=0)continue;
+    try{
+      const pc=callPeer(person.id,true);
+      const offer=await pc.createOffer();await pc.setLocalDescription(offer);
+      socket.emit('rtc:offer',{to:person.id,kind:'call',offer:pc.localDescription});
+    }catch(e){removeCallPeer(person.id)}
+  }
+}
+async function answerCallOffer(p){
+  if(!roomId||!p.from||!p.offer)return;
+  try{
+    const pc=callPeer(p.from,false);
+    await pc.setRemoteDescription(new RTCSessionDescription(p.offer));
+    if(callStream)callStream.getTracks().forEach(track=>{if(!pc.getSenders().some(s=>s.track===track))pc.addTrack(track,callStream)});
+    const answer=await pc.createAnswer();await pc.setLocalDescription(answer);
+    socket.emit('rtc:answer',{to:p.from,kind:'call',answer:pc.localDescription});
+  }catch(e){removeCallPeer(p.from);$('callStatus').textContent='Qo‘ng‘iroqqa ulanishda xatolik yuz berdi.'}
+}
+function removeCallPeer(peerId){
+  const pc=callPeers.get(peerId);if(pc){try{pc.close()}catch(e){}callPeers.delete(peerId)}
+  const video=document.getElementById('call-'+peerId);if(video&&video.parentElement)video.parentElement.remove();
+}
+socket.on('rtc:ready',p=>{
+  if(!p||!p.from)return;
+  if(p.ready)callReady.add(p.from);else{callReady.delete(p.from);removeCallPeer(p.from)}
+  if(callStream)syncCallPeers();
+});
+$('startCall').onclick=async()=>{
+  if(!roomId)return;
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){$('callStatus').textContent='Bu brauzer kamera/mikrofon ruxsatini qo‘llamaydi. HTTPS orqali oching.';return}
+  try{callStream=await navigator.mediaDevices.getUserMedia({audio:true,video:true})}
+  catch(e){try{callStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false})}
+    catch(err){$('callStatus').textContent='Kamera yoki mikrofon uchun ruxsat berilmadi.';return}}
+  $('localCallVideo').srcObject=callStream;
+  $('localCallWrap').classList.remove('hidden');
+  $('startCall').classList.add('hidden');$('stopCall').classList.remove('hidden');
+  $('callStatus').textContent='Suhbat yoqildi. Boshqa ishtirokchilar ham suhbatga qo‘shilganda ulanadi.';
+  callReady.add(socket.id);socket.emit('rtc:ready',{ready:true});
+  await syncCallPeers();
+};
+$('stopCall').onclick=stopCall;
+function stopCall(){
+  socket.emit('rtc:ready',{ready:false});callReady.delete(socket.id);
+  if(callStream){callStream.getTracks().forEach(t=>{try{t.stop()}catch(e){}});callStream=null}
+  for(const id of Array.from(callPeers.keys()))removeCallPeer(id);
+  $('localCallVideo').srcObject=null;$('localCallWrap').classList.add('hidden');
+  $('startCall').classList.remove('hidden');$('stopCall').classList.add('hidden');
+  $('callStatus').textContent='Suhbatdan chiqdingiz.';
+}
+
 socket.on('screen:stop',p=>{
   if(!p||p.from===socket.id)return;
   removePeer(p.from);
