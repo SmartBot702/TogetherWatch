@@ -64,6 +64,7 @@ function leave(socket) {
   if (!r) return;
   const m = r.members.get(socket.id);
   io.to(id).emit('rtc:ready', { from: socket.id, ready: false });
+  if (r.callReady) r.callReady.delete(socket.id);
   r.members.delete(socket.id);
   if (m) io.to(id).emit('room:system', m.name + ' xonadan chiqdi.');
   if (r.hostId === socket.id) {
@@ -82,7 +83,7 @@ function leave(socket) {
 function enter(socket, id, name, create) {
   if (!name) return error(socket, 'Ismingizni kiriting.');
   let r = rooms.get(id);
-  if (!r && create) { r = { id, hostId: socket.id, members: new Map(), state: emptyState() }; rooms.set(id, r); }
+  if (!r && create) { r = { id, hostId: socket.id, members: new Map(), callReady: new Set(), state: emptyState() }; rooms.set(id, r); }
   if (!r) return error(socket, 'Xona topilmadi. Kodni tekshiring.');
   if (r.members.size >= 20) return error(socket, 'Xona to‘la (maksimal 20 kishi).');
   if (Array.from(r.members.values()).some(m => m.name.toLowerCase() === name.toLowerCase())) return error(socket, 'Bu ism allaqachon ishlatilmoqda.');
@@ -93,6 +94,7 @@ function enter(socket, id, name, create) {
   socket.data.name = name;
   r.members.set(socket.id, { id: socket.id, name });
   socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, state: r.state });
+  for (const memberId of (r.callReady || [])) if (memberId !== socket.id) socket.emit('rtc:ready', { from: memberId, ready: true });
   socket.to(id).emit('room:system', name + ' xonaga qo‘shildi.');
   broadcastPeople(id);
 }
@@ -157,7 +159,11 @@ io.on('connection', socket => {
   });
   socket.on('rtc:ready', p => {
     const id = socket.data.roomId, r = rooms.get(id);
-    if (r && r.members.has(socket.id)) socket.to(id).emit('rtc:ready', { from: socket.id, ready: Boolean(p && p.ready) });
+    if (r && r.members.has(socket.id)) {
+      if (!r.callReady) r.callReady = new Set();
+      if (p && p.ready) r.callReady.add(socket.id); else r.callReady.delete(socket.id);
+      socket.to(id).emit('rtc:ready', { from: socket.id, ready: Boolean(p && p.ready) });
+    }
   });
   socket.on('screen:stop', () => {
     const id = socket.data.roomId, r = rooms.get(id);
