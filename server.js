@@ -16,6 +16,9 @@ app.get('/health', (_req, res) => res.json({ ok: true, service: 'TogetherWatch' 
 app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 function makeCode() {
+  for (const [id, room] of rooms) {
+    if (!room.members.size && room.emptyAt && Date.now() - room.emptyAt > 6 * 60 * 60 * 1000) rooms.delete(id);
+  }
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code;
   do { code = Array.from(crypto.randomBytes(6), b => chars[b % chars.length]).join(''); } while (rooms.has(code));
@@ -82,6 +85,8 @@ function enter(socket, id, name, create) {
   if (!r) return error(socket, 'Xona topilmadi. Kodni tekshiring.');
   if (r.members.size >= 20) return error(socket, 'Xona to‘la (maksimal 20 kishi).');
   if (Array.from(r.members.values()).some(m => m.name.toLowerCase() === name.toLowerCase())) return error(socket, 'Bu ism allaqachon ishlatilmoqda.');
+  if (!r.hostId || !r.members.has(r.hostId)) r.hostId = socket.id;
+  r.emptyAt = null;
   socket.join(id);
   socket.data.roomId = id;
   socket.data.name = name;
@@ -133,6 +138,27 @@ io.on('connection', socket => {
   }
   socket.on('video:state', playback);
   socket.on('video:heartbeat', playback);
+
+  socket.on('rtc:offer', p => {
+    const id = socket.data.roomId, r = rooms.get(id), to = p && p.to;
+    if (!r || !r.members.has(socket.id) || !r.members.has(to) || !p.offer) return;
+    io.to(to).emit('rtc:offer', { from: socket.id, offer: p.offer });
+  });
+  socket.on('rtc:answer', p => {
+    const id = socket.data.roomId, r = rooms.get(id), to = p && p.to;
+    if (!r || !r.members.has(socket.id) || !r.members.has(to) || !p.answer) return;
+    io.to(to).emit('rtc:answer', { from: socket.id, answer: p.answer });
+  });
+  socket.on('rtc:ice', p => {
+    const id = socket.data.roomId, r = rooms.get(id), to = p && p.to;
+    if (!r || !r.members.has(socket.id) || !r.members.has(to) || !p.candidate) return;
+    io.to(to).emit('rtc:ice', { from: socket.id, candidate: p.candidate });
+  });
+  socket.on('screen:stop', () => {
+    const id = socket.data.roomId, r = rooms.get(id);
+    if (r && r.members.has(socket.id)) socket.to(id).emit('screen:stop', { from: socket.id });
+  });
+
   socket.on('disconnect', () => leave(socket));
 });
 server.listen(PORT, '0.0.0.0', () => console.log('TogetherWatch listening on ' + PORT));
