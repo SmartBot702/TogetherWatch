@@ -17,6 +17,17 @@ app.disable('x-powered-by');
 app.use(express.json({ limit: '20kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'TogetherWatch' }));
+app.get('/api/rtc-config', (_req, res) => {
+  const iceServers = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' }
+  ];
+  const turnUrls = String(process.env.TURN_URLS || '').split(/[;,\s]+/).filter(url => /^turns?:/i.test(url));
+  const username = process.env.TURN_USERNAME || '';
+  const credential = process.env.TURN_CREDENTIAL || '';
+  if (turnUrls.length && username && credential) iceServers.push({ urls: turnUrls, username, credential });
+  res.set('Cache-Control', 'no-store').json({ iceServers, turnConfigured: iceServers.length > 2 });
+});
 
 function publicIp(address) {
   if (net.isIP(address) === 4) {
@@ -178,13 +189,15 @@ function leave(socket) {
       if (s) s.emit('room:role', { isHost: true });
     }
   }
-  if (!r.members.size) rooms.delete(id);
+  if (!r.members.size) r.emptyAt = Date.now();
   else broadcastPeople(id);
 }
 function enter(socket, id, name, create) {
   if (!name) return error(socket, 'Ismingizni kiriting.');
   let r = rooms.get(id);
-  if (!r && create) { r = { id, hostId: socket.id, members: new Map(), callReady: new Set(), state: emptyState(), queue: [], siteUrl: null, siteExpanded: false, screenOwner: null }; rooms.set(id, r); }
+  if (r && !r.members.size && r.emptyAt && Date.now() - r.emptyAt > 6 * 60 * 60 * 1000) { rooms.delete(id); r = null; }
+  if (!r && create) { r = { id, hostId: socket.id, members: new Map(), callReady: new Set(), state: emptyState(), queue: [], messages: [], siteUrl: null, siteExpanded: false, screenOwner: null }; rooms.set(id, r); }
+  if (r && !Array.isArray(r.messages)) r.messages = [];
   if (!r) return error(socket, 'Xona topilmadi. Kodni tekshiring.');
   if (r.members.size >= 20) return error(socket, 'Xona to‘la (maksimal 20 kishi).');
   if (Array.from(r.members.values()).some(m => m.name.toLowerCase() === name.toLowerCase())) return error(socket, 'Bu ism allaqachon ishlatilmoqda.');
@@ -194,7 +207,7 @@ function enter(socket, id, name, create) {
   socket.data.roomId = id;
   socket.data.name = name;
   r.members.set(socket.id, { id: socket.id, name });
-  socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, state: r.state, queue: r.queue || [], siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner });
+  socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, state: r.state, queue: r.queue || [], chatHistory: r.messages.slice(-100), siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner });
   for (const memberId of (r.callReady || [])) if (memberId !== socket.id) socket.emit('rtc:ready', { from: memberId, ready: true });
   socket.to(id).emit('room:system', name + ' xonaga qo‘shildi.');
   broadcastPeople(id);
@@ -218,7 +231,13 @@ io.on('connection', socket => {
   socket.on('chat:send', p => {
     const id = socket.data.roomId, r = rooms.get(id);
     const text = typeof (p && p.text) === 'string' ? p.text.trim().slice(0, 500) : '';
-    if (r && text) io.to(id).emit('chat:message', { name: socket.data.name, text, at: Date.now() });
+    if (r && r.members.has(socket.id) && text) {
+      const message = { name: socket.data.name, text, at: Date.now() };
+      if (!Array.isArray(r.messages)) r.messages = [];
+      r.messages.push(message);
+      if (r.messages.length > 100) r.messages.splice(0, r.messages.length - 100);
+      io.to(id).emit('chat:message', message);
+    }
   });
   socket.on('queue:add', p => {
     const id = socket.data.roomId, r = rooms.get(id);
