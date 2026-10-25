@@ -71,6 +71,21 @@ test('local subtitle controls support SRT and VTT for native video players', () 
   assert.match(readme, /Mahalliy `\.srt` va `\.vtt` subtitr/);
 });
 
+test('host can share VTT subtitles with the room and new members receive them', () => {
+  const server = read('server.js');
+  const app = read('public/app.js');
+  const html = read('public/index.html');
+  assert.match(server, /socket\.on\('subtitles:share'/);
+  assert.match(server, /r\.hostId !== socket\.id/);
+  assert.match(server, /Buffer\.byteLength\(p\.vtt, 'utf8'\) > 512 \* 1024/);
+  assert.match(server, /subtitles: r\.subtitles \|\| null/);
+  assert.match(server, /io\.to\(id\)\.emit\('subtitles:shared'/);
+  assert.match(app, /socket\.on\('subtitles:shared',applySharedSubtitle\)/);
+  assert.match(app, /socket\.emit\('subtitles:share'/);
+  assert.match(html, /id="shareSubtitles"/);
+  assert.match(html, /id="clearSharedSubtitles"/);
+});
+
 test('uploaded videos can be removed by the room host and disappear for everyone', () => {
   const server = read('server.js');
   const app = read('public/app.js');
