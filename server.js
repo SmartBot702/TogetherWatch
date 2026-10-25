@@ -389,6 +389,8 @@ io.on('connection', socket => {
     if (!room || !room.members.has(socket.id)) return error(socket, 'Avval xonaga kiring.');
     const raw = typeof (p && p.url) === 'string' ? p.url.slice(0, 2048).trim() : '';
     if (!raw) return socket.emit('browser:error', { message: 'Sayt manzilini kiriting.' });
+    if (room.browserStarting) return socket.emit('browser:error', { message: 'Umumiy brauzer ishga tushmoqda, biroz kuting.' });
+    room.browserStarting = true;
     try {
       const session = await openSharedBrowser(room, raw);
       socket.emit('browser:started', { url: session.page.url() });
