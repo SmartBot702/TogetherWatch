@@ -403,13 +403,33 @@ async function openSharedBrowser(room, rawUrl) {
           return route.continue();
         } catch (_) { return route.abort('blockedbyclient'); }
       });
-      const session = { browser, context, page, timer: null, capturing: false, lastInputAt: 0, inputChain: Promise.resolve() };
+      const session = { browser, context, page, timer: null, capturing: false, lastInputAt: 0, inputChain: Promise.resolve(), detectedMedia: new Set() };
       room.browserSession = session;
       page.on('close', () => { if (room.browserSession === session) closeSharedBrowser(room).catch(() => {}); });
       page.on('framenavigated', frame => {
         if (frame === page.mainFrame() && room.browserSession === session) {
+          session.detectedMedia.clear();
           io.to(room.id).emit('browser:navigated', { url: frame.url() });
         }
+      });
+      // Detect publicly reachable media responses from the shared browser, including
+      // sources that appear only after the host presses Play. Never inspect blob:, data: or DRM internals.
+      page.on('response', response => {
+        if (room.browserSession !== session || !room.members.size) return;
+        try {
+          const raw = response.url();
+          if (!/^https?:\/\//i.test(raw) || session.detectedMedia.has(raw)) return;
+          const parsed = new URL(raw);
+          const type = String(response.headers()['content-type'] || '').split(';')[0].toLowerCase();
+          const hls = /\.m3u8$/i.test(parsed.pathname) || /mpegurl/.test(type);
+          const direct = /\.(mp4|webm|m4v|ogv)$/i.test(parsed.pathname) || /^video\/(mp4|webm|ogg|x-m4v)$/.test(type);
+          if (!hls && !direct) return;
+          if (session.detectedMedia.size >= 25) return;
+          session.detectedMedia.add(raw);
+          safePublicUrl(raw).then(() => {
+            if (room.browserSession === session) io.to(room.id).emit('browser:media-candidate', { url: raw, mediaType: hls ? 'hls' : 'file' });
+          }).catch(() => {});
+        } catch (_) {}
       });
       session.timer = setInterval(() => captureSharedBrowser(room, session), 1000);
       if (session.timer.unref) session.timer.unref();
@@ -931,6 +951,22 @@ io.on('connection', socket => {
   }
   socket.on('video:state', playback);
   socket.on('video:heartbeat', playback);
+
+  socket.on('browser:use-media', async p => {
+    const id = socket.data.roomId, r = rooms.get(id);
+    if (!r || !r.members.has(socket.id) || !r.browserSession) return;
+    if (r.hostId !== socket.id) return error(socket, 'Aniqlangan videoni sinxron ijroga faqat xona egasi ulay oladi.');
+    if (!p || typeof p.url !== 'string' || !['file','hls'].includes(p.mediaType)) return;
+    const mediaType = p.mediaType;
+    const mediaUrl = p.url.slice(0, 2048);
+    try { await validateMediaSource({ mediaType, mediaUrl }); }
+    catch (_) { return error(socket, 'Aniqlangan video havolasi xavfsizlik tekshiruvidan o‘tmadi.'); }
+    const media = normalizeMedia({ mediaType, mediaId: mediaUrl, mediaUrl });
+    if (!media) return error(socket, 'Aniqlangan video formati qo‘llab-quvvatlanmaydi.');
+    r.state = { ...media, isPlaying: false, currentTime: 0, updatedAt: Date.now() };
+    io.to(id).emit('video:loaded', r.state);
+    persistRoom(r);
+  });
 
   socket.on('site:share', p => {
     const id = socket.data.roomId, r = rooms.get(id);
