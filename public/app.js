@@ -677,7 +677,14 @@ socket.on('room:state',s=>{const next=s&&normalizeState(s);if(next){$('youtubeUr
 
 function queueIce(kind,peerId,pc,candidate){
   const store=kind==='call'?pendingCallIce:pendingScreenIce;
-  if(!pc.remoteDescription||!pc.remoteDescription.type){const q=store.get(peerId)||[];q.push(candidate);store.set(peerId,q);return}
+  if(!candidate||typeof candidate!=='object'||typeof candidate.candidate!=='string'||candidate.candidate.length>4096)return;
+  if(!pc.remoteDescription||!pc.remoteDescription.type){
+    const q=store.get(peerId)||[];
+    // ICE can arrive before the remote description. Bound this queue so malformed
+    // or excessive signaling cannot grow memory indefinitely.
+    if(q.length>=128)q.shift();
+    q.push(candidate);store.set(peerId,q);return;
+  }
   pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(()=>{});
 }
 async function flushIce(kind,peerId,pc){
