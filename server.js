@@ -129,7 +129,7 @@ function mediaCandidates(html, pageUrl) {
   const found = [];
   const add = raw => {
     if (!raw || typeof raw !== 'string') return;
-    const value = decodeHtml(raw.trim()).replace(/\\\//g, '/');
+    const value = decodeHtml(raw.trim()).replace(/\\//g, '/');
     try {
       const u = new URL(value, pageUrl);
       if (['http:', 'https:'].includes(u.protocol) && /\.(mp4|webm|m3u8)$/i.test(u.pathname)) found.push(u.href);
@@ -249,6 +249,7 @@ function enter(socket, id, name, create, options = {}) {
   socket.data.name = name;
   r.members.set(socket.id, { id: socket.id, name });
   socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, title: r.title, theme: r.theme, state: r.state, queue: r.queue || [], chatHistory: r.messages.slice(-100), siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner, isPublic: Boolean(r.isPublic), game: r.game || { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 } });
+  for (const file of (r.files || [])) socket.emit('file:shared', file);
   for (const memberId of (r.callReady || [])) if (memberId !== socket.id) socket.emit('rtc:ready', { from: memberId, ready: true });
   socket.to(id).emit('room:system', name + ' xonaga qo‘shildi.');
   broadcastPeople(id);
@@ -301,6 +302,28 @@ io.on('connection', socket => {
     r.game = { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 };
     io.to(id).emit('game:state', r.game);
     persistRoom(r);
+  });
+
+
+  socket.on('file:share', p => {
+    const id = socket.data.roomId, r = rooms.get(id);
+    if (!r || !r.members.has(socket.id) || !p || typeof p.name !== 'string' || typeof p.data !== 'string') return;
+    const name = path.basename(p.name).replace(/[^\p{L}\p{N}._ -]/gu, '').trim().slice(0, 100);
+    const ext = path.extname(name).toLowerCase();
+    const mimeByExt = { '.pdf':'application/pdf', '.txt':'text/plain', '.md':'text/markdown', '.csv':'text/csv', '.png':'image/png', '.jpg':'image/jpeg', '.jpeg':'image/jpeg', '.gif':'image/gif', '.webp':'image/webp', '.mp3':'audio/mpeg', '.mp4':'video/mp4', '.webm':'video/webm' };
+    if (!name || !mimeByExt[ext]) return error(socket, 'Bu fayl turi qo‘llab-quvvatlanmaydi. PDF, TXT, MD, CSV, rasm, MP3, MP4 yoki WebM yuboring.');
+    const match = p.data.match(/^data:([a-z0-9.+-]+\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/i);
+    if (!match || match[2].length > 620000) return error(socket, 'Fayl 450 KB dan kichik bo‘lishi va to‘g‘ri formatda bo‘lishi kerak.');
+    const bytes = Buffer.from(match[2], 'base64');
+    if (!bytes.length || bytes.length > 450 * 1024) return error(socket, 'Fayl hajmi 450 KB dan oshmasin.');
+    const mime = mimeByExt[ext];
+    if (match[1].toLowerCase() !== mime && !(ext === '.md' && match[1].toLowerCase() === 'text/plain')) return error(socket, 'Fayl turi va kengaytmasi mos kelmaydi.');
+    if (!Array.isArray(r.files)) r.files = [];
+    const total = r.files.reduce((sum, f) => sum + f.size, 0);
+    if (r.files.length >= 5 || total + bytes.length > 1300 * 1024) return error(socket, 'Xonada 5 ta fayl yoki jami 1.3 MB limitiga yetildi.');
+    const file = { id: crypto.randomBytes(10).toString('hex'), name, mime, size: bytes.length, data: p.data, by: socket.data.name, at: Date.now() };
+    r.files.push(file);
+    io.to(id).emit('file:shared', file);
   });
 
   socket.on('room:leave', () => leave(socket));
@@ -454,7 +477,7 @@ auth.attach(app, io).then(async () => {
       messages: Array.isArray(payload.messages) ? payload.messages.slice(-100) : [],
       siteUrl: payload.siteUrl || null, siteExpanded: Boolean(payload.siteExpanded),
       title: typeof payload.title === 'string' ? payload.title : 'Tomosha xonasi', theme: cleanRoomTheme(payload.theme),
-      screenOwner: null, emptyAt: saved.emptyAt || Date.now()
+      screenOwner: null, files: [], isPublic: Boolean(payload.isPublic), emptyAt: saved.emptyAt || Date.now()
     };
     rooms.set(room.id, room);
     persistRoom(room, true);
