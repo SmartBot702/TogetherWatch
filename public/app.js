@@ -3,7 +3,7 @@ const $=id=>document.getElementById(id);
 const socket=io();
 let rtcIceServers=[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun.cloudflare.com:3478'}];
 fetch('/api/rtc-config',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(c=>{if(c&&Array.isArray(c.iceServers)&&c.iceServers.length)rtcIceServers=c.iceServers}).catch(()=>{});
-let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null,callStream=null,siteUrl=null,siteExpanded=false,screenOwner=null,hlsInstance=null,queueItems=[],volume=1,muted=false,seekDuration=0,seeking=false,localFile=null,localFileId=null,localObjectUrl=null,latestPlaybackState=null;const peers=new Map(),callPeers=new Map(),callReady=new Set(),pendingScreenIce=new Map(),pendingCallIce=new Map();
+let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null,callStream=null,siteUrl=null,siteExpanded=false,screenOwner=null,hlsInstance=null,queueItems=[],volume=1,muted=false,seekDuration=0,seeking=false,localFile=null,localFileId=null,localObjectUrl=null,latestPlaybackState=null,endedQueueAdvanceKey=null;const peers=new Map(),callPeers=new Map(),callReady=new Set(),pendingScreenIce=new Map(),pendingCallIce=new Map();
 
 socket.on('connect',()=>{
   $('connection').textContent='● Serverga ulandi';
@@ -463,16 +463,24 @@ function markReady(state){
   applyVolume();
   if(state)applyState(state);
 }
+function advanceQueueOnEnded(){
+  if(!isHost||!roomId||!media)return;
+  const key=media.mediaType+':'+media.mediaId;
+  // Some providers may signal ENDED more than once. Advance only once for this player.
+  if(endedQueueAdvanceKey===key)return;
+  endedQueueAdvanceKey=key;
+  socket.emit('queue:next');
+}
 function loadMedia(next,state){
   if(!next)return;
-  destroyPlayer();media=next;$('videoError').textContent='';$('placeholder').classList.add('hidden');
+  destroyPlayer();media=next;endedQueueAdvanceKey=null;$('videoError').textContent='';$('placeholder').classList.add('hidden');
   $('playState').textContent='Video yuklanmoqda…';
   if(next.mediaType==='youtube'){
     if(!window.YT||!YT.Player){setTimeout(()=>loadMedia(next,state),200);return}
     const el=document.createElement('div');el.id='ytPlayer';$('player').append(el);
     player=new YT.Player('ytPlayer',{videoId:next.mediaId,playerVars:{playsinline:1,rel:0,controls:0,disablekb:1,origin:location.origin},events:{
       onReady:()=>markReady(state),
-      onStateChange:e=>{if(remote||Date.now()<remoteUntil)return;if(e.data===YT.PlayerState.ENDED){if(isHost)socket.emit('queue:next');return}if(e.data===YT.PlayerState.PLAYING||e.data===YT.PlayerState.PAUSED)emitPlayback(e.data===YT.PlayerState.PLAYING,getTime())},
+      onStateChange:e=>{if(remote||Date.now()<remoteUntil)return;if(e.data===YT.PlayerState.ENDED){advanceQueueOnEnded();return}if(e.data===YT.PlayerState.PLAYING||e.data===YT.PlayerState.PAUSED)emitPlayback(e.data===YT.PlayerState.PLAYING,getTime())},
       onAutoplayBlocked:()=>{$('videoError').textContent='Brauzer avtomatik ijroni blokladi. Videoni Play tugmasi bilan qo‘lda boshlang.';$('playState').textContent='Play tugmasini bosing'},
       onError:()=>{$('videoError').textContent='YouTube videosini ochib bo‘lmadi.'}
     }});
@@ -483,7 +491,7 @@ function loadMedia(next,state){
       player.ready().then(()=>markReady(state)).catch(()=>{$('videoError').textContent='Vimeo videosini ochib bo‘lmadi yoki video maxfiy.'});
       player.on('play',()=>{if(!remote&&Date.now()>=remoteUntil)getTimeAsync().then(t=>emitPlayback(true,t))});
       player.on('pause',()=>{if(!remote&&Date.now()>=remoteUntil)getTimeAsync().then(t=>emitPlayback(false,t))});
-       player.on('ended',()=>{if(isHost)socket.emit('queue:next')});
+       player.on('ended',advanceQueueOnEnded);
     };init();
   }else if(next.mediaType==='local'||next.mediaType==='file'||next.mediaType==='hls'){
     if(next.mediaType==='local'&&(!localObjectUrl||localFileId!==next.mediaId)){$('placeholder').classList.remove('hidden');$('playState').textContent='Mahalliy fayl kerak';$('videoError').textContent='Bu xonadagi videoni ko‘rish uchun “Mahalliy video” tugmasini bosib, aynan bir xil faylni tanlang.';$('localVideoHint').textContent='Kerakli fayl: '+next.mediaId+' — fayl nomi, hajmi va sanasi mos bo‘lishi kerak.';return}
@@ -498,7 +506,7 @@ function loadMedia(next,state){
     video.addEventListener('play',()=>{if(!remote&&Date.now()>=remoteUntil)emitPlayback(true,video.currentTime)});
     video.addEventListener('pause',()=>{if(!remote&&Date.now()>=remoteUntil&&!video.ended)emitPlayback(false,video.currentTime)});
     video.addEventListener('seeked',()=>{if(!remote&&Date.now()>=remoteUntil)emitPlayback(!video.paused,video.currentTime)});
-     video.addEventListener('ended',()=>{if(isHost)socket.emit('queue:next')});
+     video.addEventListener('ended',advanceQueueOnEnded);
   }
 }
 function getTime(){
