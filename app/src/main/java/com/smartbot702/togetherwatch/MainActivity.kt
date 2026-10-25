@@ -94,7 +94,8 @@ class MainActivity : Activity() {
     private fun normalizedBaseUrl(): String {
         val raw = address.text.toString().trim().ifBlank { DEFAULT_URL }
         val url = if (raw.startsWith("https://") || raw.startsWith("http://")) raw else "https://$raw"
-        return url.substringBefore("/", url).let { url.trimEnd('/') }
+        val parsed = android.net.Uri.parse(url)
+        return "${parsed.scheme}://${parsed.host}" + if (parsed.port != -1) ":${parsed.port}" else ""
     }
 
     private fun loadAddress() {
