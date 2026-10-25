@@ -584,7 +584,7 @@ async function seekTo(t){
   const v=Math.max(0,Number(t)||0);
   try{if(media.mediaType==='youtube')player.seekTo(v,true);else if(media.mediaType==='file'||media.mediaType==='hls')player.currentTime=v;else if(media.mediaType==='vimeo')await player.setCurrentTime(v)}catch(e){}
 }
-async function play(){if(!player||!playerReady)return;try{if(media.mediaType==='youtube')player.playVideo();else await player.play()}catch(e){$('videoError').textContent='Ijro etish uchun videoni sahifada ishga tushiring.'}}
+async function play(){if(!player||!playerReady)return false;try{if(media.mediaType==='youtube'){player.playVideo();return true}await player.play();return true}catch(e){$('videoError').textContent='Avtomatik ijro bloklandi. Videoni o‘zingiz Play tugmasi bilan boshlang; keyin holat xona bilan sinxronlanadi.';return false}}
 async function pause(){if(!player||!playerReady)return;try{if(media.mediaType==='youtube')player.pauseVideo();else await player.pause()}catch(e){}}
 async function applyState(s){
   if(!playerReady||!player||!s)return;
@@ -595,8 +595,7 @@ async function applyState(s){
   try{
     const current=await getTimeAsync();
     if(Math.abs(current-t)>2)await seekTo(t);
-    if(s.isPlaying)await play();else await pause();
-    $('playState').textContent=s.isPlaying?'▶ Ijro etilmoqda':'Ⅱ Pauza';
+    if(s.isPlaying){const started=await play();$('playState').textContent=started?'▶ Ijro etilmoqda':'▶ Play tugmasini bosing';if(!started)$('videoError').textContent='Brauzer avtomatik ijroni blokladi. Videoni bir marta qo‘lda ishga tushiring.';}else{await pause();$('playState').textContent='Ⅱ Pauza';}
   }catch(e){}
   setTimeout(()=>{remote=false},1300);
 }
@@ -647,8 +646,7 @@ socket.on('video:state',s=>{const next=normalizeState(s);if(next&&(!media||next.
 $('playPause').onclick=async()=>{
   if(!playerReady)return;
   const playing=await isPlaying(),t=await getTimeAsync();
-  if(playing)await pause();else await play();
-  emitPlayback(!playing,t);
+  if(playing){await pause();emitPlayback(false,t)}else{const started=await play();if(started)emitPlayback(true,t)}
 };
 async function seek(d){
   if(!playerReady)return;
