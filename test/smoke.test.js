@@ -81,6 +81,9 @@ test('chat search, member mentions, and shared-browser media detection are avail
   assert.match(app, /browser:use-media/);
   assert.match(server, /page\.on\('response'/);
   assert.match(server, /crypto\.createHash\('sha1'\)/);
+  assert.match(server, /Page\.startScreencast/);
+  assert.match(server, /Page\.screencastFrameAck/);
+  assert.match(server, /everyNthFrame: 2/);
   assert.match(server, /frameKey !== session\.lastFrameKey/);
   assert.match(server, /browser:media-candidate/);
   assert.match(server, /socket\.on\('browser:use-media'/);
