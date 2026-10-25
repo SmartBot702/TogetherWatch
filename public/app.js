@@ -22,6 +22,7 @@ function setRoomTab(tab){
   activeRoomTab=allowed.has(tab)?tab:'video';
   document.querySelectorAll('[data-room-tab]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.roomTab===activeRoomTab)));
   document.querySelectorAll('[data-room-section]').forEach(section=>{section.hidden=section.dataset.roomSection!==activeRoomTab});
+  if(activeRoomTab==='board'&&typeof resizeWhiteboard==='function')resizeWhiteboard();
 }
 document.querySelectorAll('[data-room-tab]').forEach(button=>button.addEventListener('click',()=>setRoomTab(button.dataset.roomTab)));
 setRoomTab('video');
@@ -257,7 +258,7 @@ socket.on('board:stroke',stroke=>{if(!stroke)return;boardStrokes.push(stroke);if
 socket.on('board:history',strokes=>{boardStrokes=Array.isArray(strokes)?strokes.slice(-2000):[];resizeWhiteboard();$('whiteboardStatus').textContent=boardStrokes.length?'Saqlangan chiziqlar yuklandi.':'Chizish uchun barmoq yoki sichqonchadan foydalaning.'});
 socket.on('board:clear',()=>{boardStrokes=[];resizeWhiteboard();$('whiteboardStatus').textContent='Doska tozalandi.'});
 $('clearWhiteboard').addEventListener('click',()=>{if(roomId)socket.emit('board:clear')});
-$('boardUndo').addEventListener('click',()=>{$('whiteboardStatus').textContent='Oxirgi chiziqni bekor qilish hozircha faqat joriy foydalanuvchi qurilmasida qo‘llab-quvvatlanmaydi; doskani tozalash mumkin.'});
+
 window.addEventListener('resize',resizeWhiteboard);
 if('ResizeObserver'in window)new ResizeObserver(resizeWhiteboard).observe(whiteboard);
 resizeWhiteboard();
