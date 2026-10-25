@@ -3,7 +3,7 @@ const $=id=>document.getElementById(id);
 const socket=io();
 let rtcIceServers=[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun.cloudflare.com:3478'}];
 fetch('/api/rtc-config',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(c=>{if(c&&Array.isArray(c.iceServers)&&c.iceServers.length)rtcIceServers=c.iceServers}).catch(()=>{});
-let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null,callStream=null,siteUrl=null,siteExpanded=false,screenOwner=null,hlsInstance=null,queueItems=[];const peers=new Map(),callPeers=new Map(),callReady=new Set(),pendingScreenIce=new Map(),pendingCallIce=new Map();
+let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null,callStream=null,siteUrl=null,siteExpanded=false,screenOwner=null,hlsInstance=null,queueItems=[],volume=1,muted=false;const peers=new Map(),callPeers=new Map(),callReady=new Set(),pendingScreenIce=new Map(),pendingCallIce=new Map();
 
 socket.on('connect',()=>{
   $('connection').textContent='● Serverga ulandi';
@@ -132,13 +132,14 @@ function destroyPlayer(){
   }
   $('player').replaceChildren();player=null;playerReady=false;media=null;
   $('placeholder').classList.remove('hidden');
-  $('playPause').disabled=true;$('back').disabled=true;$('forward').disabled=true;
+  ['playPause','back','forward','muteToggle','volume','videoFullscreen'].forEach(id=>$(id).disabled=true);
 }
 function markReady(state){
   playerReady=true;
-  ['playPause','back','forward'].forEach(k=>$(k).disabled=false);
+  ['playPause','back','forward','muteToggle','volume','videoFullscreen'].forEach(k=>$(k).disabled=false);
   $('placeholder').classList.add('hidden');
   $('playState').textContent='Tayyor';
+  applyVolume();
   if(state)applyState(state);
 }
 function loadMedia(next,state){
@@ -191,6 +192,33 @@ async function isPlaying(){
   try{if(media.mediaType==='youtube')return player.getPlayerState()===YT.PlayerState.PLAYING;if(media.mediaType==='file'||media.mediaType==='hls')return !player.paused;if(media.mediaType==='vimeo')return (await player.getPaused())===false}catch(e){}
   return false;
 }
+async function applyVolume(){
+  if(!player||!playerReady||!media)return;
+  const value=Math.max(0,Math.min(1,Number(volume)||0));
+  try{
+    if(media.mediaType==='youtube'){
+      player.setVolume(Math.round(value*100));
+      if(muted||value===0)player.mute();else player.unMute();
+    }else if(media.mediaType==='vimeo'){
+      await player.setVolume(value);
+      await player.setMuted(Boolean(muted||value===0));
+    }else{
+      player.volume=value;player.muted=Boolean(muted||value===0);
+    }
+  }catch(e){}
+  $('muteToggle').textContent=(muted||value===0)?'🔇 Ovozni yoqish':'🔊 Ovozni o‘chirish';
+  $('volume').value=String(value);
+}
+$('muteToggle').onclick=()=>{muted=!muted;applyVolume()};
+$('volume').addEventListener('input',e=>{volume=Math.max(0,Math.min(1,Number(e.target.value)||0));if(volume>0)muted=false;applyVolume()});
+$('videoFullscreen').onclick=async()=>{
+  try{
+    if(document.fullscreenElement)await document.exitFullscreen();
+    else if($('video').requestFullscreen)await $('video').requestFullscreen();
+    else $('videoError').textContent='Bu brauzer to‘liq ekran rejimini qo‘llamaydi.';
+  }catch(e){$('videoError').textContent='To‘liq ekran rejimiga o‘tib bo‘lmadi.'}
+};
+document.addEventListener('fullscreenchange',()=>{$('videoFullscreen').textContent=document.fullscreenElement?'⤢ Ekrandan chiqish':'⛶ To‘liq ekran'});
 function emitPlayback(playing,time){
   if(!media||!roomId)return;
   socket.emit('video:state',{mediaType:media.mediaType,mediaId:media.mediaId,mediaUrl:media.mediaUrl,videoId:media.videoId,isPlaying:!!playing,currentTime:Math.max(0,Number(time)||0)});
