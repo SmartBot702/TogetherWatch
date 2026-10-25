@@ -227,7 +227,7 @@ function enter(socket, id, name, create, options = {}) {
   if (!name) return error(socket, 'Ismingizni kiriting.');
   let r = rooms.get(id);
   if (r && !r.members.size && r.emptyAt && Date.now() - r.emptyAt > 6 * 60 * 60 * 1000) { discardRoom(id); r = null; }
-  if (!r && create) { r = { id, hostId: socket.id, members: new Map(), callReady: new Set(), state: emptyState(), queue: [], messages: [], siteUrl: null, siteExpanded: false, screenOwner: null, title: cleanRoomTitle(options.title) || 'Tomosha xonasi', theme: cleanRoomTheme(options.theme) }; rooms.set(id, r); }
+  if (!r && create) { r = { id, hostId: socket.id, members: new Map(), callReady: new Set(), state: emptyState(), queue: [], messages: [], siteUrl: null, siteExpanded: false, screenOwner: null, title: cleanRoomTitle(options.title) || 'Tomosha xonasi', theme: cleanRoomTheme(options.theme), game: { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 } }; rooms.set(id, r); }
   if (!r.title) r.title = 'Tomosha xonasi';
   if (!r.theme) r.theme = 'violet';
   if (r && !Array.isArray(r.messages)) r.messages = [];
@@ -240,7 +240,7 @@ function enter(socket, id, name, create, options = {}) {
   socket.data.roomId = id;
   socket.data.name = name;
   r.members.set(socket.id, { id: socket.id, name });
-  socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, title: r.title, theme: r.theme, state: r.state, queue: r.queue || [], chatHistory: r.messages.slice(-100), siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner });
+  socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, title: r.title, theme: r.theme, state: r.state, queue: r.queue || [], chatHistory: r.messages.slice(-100), siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner, game: r.game || { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 } });
   for (const memberId of (r.callReady || [])) if (memberId !== socket.id) socket.emit('rtc:ready', { from: memberId, ready: true });
   socket.to(id).emit('room:system', name + ' xonaga qo‘shildi.');
   broadcastPeople(id);
@@ -271,6 +271,30 @@ io.on('connection', socket => {
     io.to(id).emit('room:settings', { title: r.title, theme: r.theme, by: socket.data.name });
     persistRoom(r, true);
   });
+
+  socket.on('game:move', p => {
+    const id = socket.data.roomId, r = rooms.get(id);
+    if (!r || !r.members.has(socket.id) || !p || !Number.isInteger(p.index) || p.index < 0 || p.index > 8) return;
+    if (!r.game) r.game = { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 };
+    const g = r.game;
+    if (g.winner || g.board[p.index] || g.moves >= 9) return socket.emit('game:error', 'Bu yurish mumkin emas.');
+    const mark = g.turn;
+    g.board[p.index] = mark; g.moves++;
+    const wins = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+    if (wins.some(line => line.every(i => g.board[i] === mark))) g.winner = mark;
+    else if (g.moves === 9) g.winner = 'draw';
+    else g.turn = mark === 'X' ? 'O' : 'X';
+    io.to(id).emit('game:state', g);
+    persistRoom(r);
+  });
+  socket.on('game:reset', () => {
+    const id = socket.data.roomId, r = rooms.get(id);
+    if (!r || !r.members.has(socket.id)) return;
+    r.game = { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 };
+    io.to(id).emit('game:state', r.game);
+    persistRoom(r);
+  });
+
   socket.on('room:leave', () => leave(socket));
   socket.on('chat:typing', p => {
     const id = socket.data.roomId, r = rooms.get(id);
