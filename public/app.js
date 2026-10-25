@@ -61,7 +61,7 @@ function renderSharedSite(url,expanded){
   if(renderedSiteUrl!==siteUrl){$('sharedSiteFrame').src=siteUrl;$('siteUrlInput').value=siteUrl;renderedSiteUrl=siteUrl}
   wrap.classList.toggle('site-expanded',siteExpanded);
   $('siteExpand').textContent=siteExpanded?'Kichraytirish (hamma uchun)':'Hamma uchun kattalashtirish';
-  $('siteStatus').textContent='Sayt '+siteUrl+' — ichki oynada ochilmasa, “Yangi oynada ochish” yoki ekran ulashishdan foydalaning.';
+  $('siteStatus').textContent='Havola xona bilan ulashildi: '+siteUrl+'. Agar ichki oynada “taqiqlangan / refused to connect” chiqsa, bu saytning iframe xavfsizlik cheklovi. “Yangi oynada ochish”ni bosing, keyin “Ekran ulashish” orqali brauzer oynasini hamma bilan ko‘rsating.';
 }
 $('shareSite').onclick=()=>{
   try{const u=new URL($('siteUrlInput').value.trim());if(!['http:','https:'].includes(u.protocol))throw new Error('protocol');socket.emit('site:share',{url:u.href})}
@@ -240,8 +240,8 @@ $('loadVideo').onclick=async()=>{
   try{
     const response=await fetch('/api/extract?url='+encodeURIComponent(u.href)),result=await response.json();
     if(result.ok&&result.mediaUrl){const found={mediaType:result.mediaType,mediaId:result.mediaUrl,mediaUrl:result.mediaUrl,videoId:null};$('videoError').textContent='Video havolasi topildi. Hamma uchun ulanyapti…';socket.emit('video:load',found);return}
-    socket.emit('site:share',{url:u.href});$('videoError').textContent='Sayt xona ichida ochildi, lekin ochiq video oqimi avtomatik topilmadi. Bu saytda DRM, CORS yoki yashirin player bo‘lishi mumkin — ekran ulashishdan foydalaning.';$('playState').textContent='Sayt ochildi';
-  }catch(e){socket.emit('site:share',{url:u.href});$('videoError').textContent='Sayt ulashildi. Video oqimini avtomatik olish imkoni bo‘lmadi; ekran ulashish yordam beradi.'}
+    socket.emit('site:share',{url:u.href});$('videoError').textContent=(result.error?'Sayt server orqali tekshirishga ruxsat bermadi: '+result.error+' ':'Ochiq video oqimi topilmadi. ')+'Havola xona bilan ulashildi. Agar “taqiqlangan / refused to connect” chiqsa, “Yangi oynada ochish”ni bosing va ekran ulashing.';$('playState').textContent='Tashqi sayt';
+  }catch(e){socket.emit('site:share',{url:u.href});$('videoError').textContent='Sayt havolasi ulashildi, ammo video oqimini olish imkoni bo‘lmadi. “Yangi oynada ochish”ni bosing va brauzer oynasini ekran ulashish orqali ko‘rsating.'}
   finally{$('loadVideo').disabled=false}
 };
 socket.on('video:loaded',s=>{const next=normalizeState(s);if(next)loadMedia(next,s)});
