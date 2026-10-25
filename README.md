@@ -52,6 +52,7 @@ render.yaml Node.js xizmatining asosiy qismini joylashtiradi, lekin Docker Compo
 - Qo‘llab-quvvatlanadigan video playerlarda 0.5×–2× ijro tezligini tanlash (tezlik har bir tomoshabinda alohida sozlanadi).
 - Mahalliy `.srt` va `.vtt` subtitr fayllarini MP4/WebM/HLS yoki yuklangan videoga ulash. Xona egasi VTT subtitrni 512 KB gacha barcha ishtirokchilarga ulashishi mumkin; xona keyin qo‘shilganlar ham uni oladi. Subtitr YouTube/Vimeo/Drive iframe’larida ishlamaydi.
 - Ovozli/video suhbatda aloqa uzilganda ulanish holati kuzatiladi; tiklanmasa, belgilangan tomon 1.2, 2.4 va 4.8 soniyalik oraliqlarda ko‘pi bilan 3 marta qayta urinadi. Muvaffaqiyatli ulanishda urinishlar hisoblagichi tozalanadi.
+- Xona chatida foydalanuvchi o‘z xabarini tahrirlashi yoki o‘chirishi mumkin; server faqat xabar muallifiga ruxsat beradi va o‘zgarishni xonadagi barchaga tarqatadi.
 - Umumiy chat, akkaunt/profil, do‘stlar va shaxsiy xabarlar.
 - Ovoz/video qo‘ng‘iroqlari va WebRTC ekran ulashish.
 - Bir xil masofaviy Chromium sahifasini hamma birga boshqaradigan umumiy brauzer.
