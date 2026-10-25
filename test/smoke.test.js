@@ -68,7 +68,7 @@ test('local subtitle controls support SRT and VTT for native video players', () 
   assert.match(app, /\(\\d\{2\}:\\d\{2\}:\\d\{2\}\),\(\\d\{3\}\)/);
   assert.match(app, /file\.size>2\*1024\*1024/);
   assert.match(app, /URL\.revokeObjectURL\(subtitleObjectUrl\)/);
-  assert.match(readme, /Subtitrlar \.srt\/\.vtt/);
+  assert.match(readme, /Mahalliy `\.srt` va `\.vtt` subtitr/);
 });
 
 test('uploaded videos can be removed by the room host and disappear for everyone', () => {
