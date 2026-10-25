@@ -484,6 +484,11 @@ function parseMedia(raw){
       else if(u.pathname.startsWith('/embed/')||u.pathname.startsWith('/shorts/')||u.pathname.startsWith('/live/'))id=u.pathname.split('/')[2]||null;
     }
     const requested=$('mediaType').value;
+    if((host==='drive.google.com'||host==='drive.usercontent.google.com')&&(requested==='auto'||requested==='gdrive')){
+      const match=u.pathname.match(/\\/file\\/d\\/([A-Za-z0-9_-]{10,200})/);
+      const driveId=match&&match[1]||u.searchParams.get('id');
+      if(driveId&&/^[A-Za-z0-9_-]{10,200}$/.test(driveId))return{mediaType:'gdrive',mediaId:driveId,mediaUrl:'https://drive.google.com/file/d/'+driveId+'/preview',videoId:null};
+    }
     if(id&&/^[A-Za-z0-9_-]{11}$/.test(id)&&(requested==='auto'||requested==='youtube'))return{mediaType:'youtube',mediaId:id,mediaUrl:'https://www.youtube.com/watch?v='+id,videoId:id};
     if((host==='vimeo.com'||host==='player.vimeo.com')&&($('mediaType').value==='auto'||$('mediaType').value==='vimeo')){
       const parts=u.pathname.split('/').filter(Boolean);id=parts.find(x=>/^\d{1,15}$/.test(x))||null;
@@ -569,6 +574,8 @@ function loadMedia(next,state){
       player.on('pause',()=>{if(!remote&&Date.now()>=remoteUntil)getTimeAsync().then(t=>emitPlayback(false,t))});
        player.on('ended',advanceQueueOnEnded);
     };init();
+  }else if(next.mediaType==='gdrive'){
+    const frame=document.createElement('iframe');frame.id='gdrivePlayer';frame.src=next.mediaUrl;frame.title='Google Drive video';frame.allow='autoplay; fullscreen; picture-in-picture';frame.allowFullscreen=true;frame.referrerPolicy='no-referrer';frame.style.width='100%';frame.style.height='100%';frame.style.position='absolute';frame.style.inset='0';frame.style.border='0';$('player').append(frame);player=frame;playerReady=true;$('placeholder').classList.add('hidden');$('videoFullscreen').disabled=false;$('playPause').disabled=true;$('back').disabled=true;$('forward').disabled=true;$('muteToggle').disabled=true;$('volume').disabled=true;$('seekRange').disabled=true;$('playState').textContent='Google Drive player';$('videoError').textContent='Google Drive videosi ochildi. Ijro uchun fayl egasi “Havolaga ega har kim — Viewer” ruxsatini berishi kerak. Drive playeri tashqi iframe bo‘lgani uchun Play/Pause va vaqt sinxronligi boshqarilmaydi; hamma videoni o‘z oynasida Play bosib boshlashi mumkin.';
   }else if(next.mediaType==='vk'||next.mediaType==='ok'||next.mediaType==='rutube'){
     const frame=document.createElement('iframe');
     frame.id=next.mediaType==='vk'?'vkPlayer':next.mediaType==='ok'?'okPlayer':'rutubePlayer';
