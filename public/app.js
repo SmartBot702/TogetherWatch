@@ -17,13 +17,20 @@ socket.on('disconnect',()=>{
 });
 
 let activeRoomTab='video';
+const activityLabels={video:'Video tomosha',site:'Umumiy brauzer',games:'O‘yinlar',board:'Birgalikda chizish',files:'Fayllar',screen:'Ekran ulashish',call:'Ovoz/video suhbat',people:'Ishtirokchilar'};
 function setRoomTab(tab){
-  const allowed=new Set(['video','site','games','board','files','screen','call','people']);
+  const allowed=new Set(Object.keys(activityLabels));
   activeRoomTab=allowed.has(tab)?tab:'video';
   document.querySelectorAll('[data-room-tab]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.roomTab===activeRoomTab)));
   document.querySelectorAll('[data-room-section]').forEach(section=>{section.hidden=section.dataset.roomSection!==activeRoomTab});
+  document.querySelectorAll('[data-shared-activity]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.sharedActivity===activeRoomTab)));
+  const status=$('sharedActivityStatus');
+  if(status)status.textContent='Faol bo‘lim: '+activityLabels[activeRoomTab]+'. Boshqa faoliyat tanlansa, u barcha ishtirokchilarda ham ochiladi.';
   if(activeRoomTab==='board'&&typeof resizeWhiteboard==='function')resizeWhiteboard();
 }
+document.querySelectorAll('[data-shared-activity]').forEach(button=>button.addEventListener('click',()=>{
+  if(roomId)socket.emit('activity:launch',{activity:button.dataset.sharedActivity});
+}));
 document.querySelectorAll('[data-room-tab]').forEach(button=>button.addEventListener('click',()=>setRoomTab(button.dataset.roomTab)));
 setRoomTab('video');
 
@@ -42,7 +49,7 @@ $('joinRoom').onclick=()=>{
 $('roomInput').oninput=e=>e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
 socket.on('room:error',m=>{$('entryError').textContent=m;$('videoError').textContent=m;$('fileShareStatus').textContent=m});
 socket.on('room:joined',d=>{
-  roomId=d.roomId;isHost=d.isHost;setRoomTab('video');setSection('watch');$('publicRoomsPanel').classList.add('hidden');$('activityHub').classList.add('hidden');renderGame(d.game);applyRoomSettings(d.title||'Tomosha xonasi',d.theme||'violet',isHost,d.isPublic);siteUrl=d.siteUrl||null;siteExpanded=Boolean(d.siteExpanded);screenOwner=d.screenOwner||null;renderSharedSite(siteUrl,siteExpanded);
+  roomId=d.roomId;isHost=d.isHost;setRoomTab(d.activeActivity||'video');setSection('watch');$('publicRoomsPanel').classList.add('hidden');$('activityHub').classList.add('hidden');renderGame(d.game);applyRoomSettings(d.title||'Tomosha xonasi',d.theme||'violet',isHost,d.isPublic);siteUrl=d.siteUrl||null;siteExpanded=Boolean(d.siteExpanded);screenOwner=d.screenOwner||null;renderSharedSite(siteUrl,siteExpanded);
   $('entry').classList.add('hidden');$('how').classList.add('hidden');$('workspace').classList.remove('hidden');
   $('roomCode').textContent=roomId;$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
   $('loadVideo').disabled=false;$('youtubeUrl').disabled=false;$('mediaType').disabled=false;$('screenShare').disabled=!!screenOwner&&screenOwner!==socket.id;$('chat').replaceChildren();
@@ -73,6 +80,7 @@ socket.on('room:people',list=>{
 function system(t){const e=document.createElement('div');e.className='system';e.textContent=t;$('chat').append(e);scroll()}
 function scroll(){$('chat').scrollTop=$('chat').scrollHeight}
 socket.on('room:system',system);
+socket.on('activity:launched',d=>{if(!d||!d.activity)return;setRoomTab(d.activity);const status=$('sharedActivityStatus');if(status)status.textContent=(d.by||'Ishtirokchi')+' «'+(activityLabels[d.activity]||'Faoliyat')+'» bo‘limini hamma uchun ochdi.';});
 function renderChatMessage(m){
   const e=document.createElement('div');e.className='message';
   const header=document.createElement('div');header.className='message-header';
