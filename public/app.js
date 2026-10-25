@@ -3,7 +3,7 @@ const $=id=>document.getElementById(id);
 const socket=io();
 let rtcIceServers=[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun.cloudflare.com:3478'}];
 fetch('/api/rtc-config',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(c=>{if(c&&Array.isArray(c.iceServers)&&c.iceServers.length)rtcIceServers=c.iceServers}).catch(()=>{});
-let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null,callStream=null,siteUrl=null,siteExpanded=false,screenOwner=null,hlsInstance=null,queueItems=[],volume=1,muted=false,seekDuration=0,seeking=false,localFile=null,localFileId=null,localObjectUrl=null,subtitleObjectUrl=null,subtitleTrack=null,latestPlaybackState=null,endedQueueAdvanceKey=null;const peers=new Map(),callPeers=new Map(),callReady=new Set(),pendingScreenIce=new Map(),pendingCallIce=new Map();
+let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null,callStream=null,siteUrl=null,siteExpanded=false,screenOwner=null,hlsInstance=null,queueItems=[],volume=1,muted=false,seekDuration=0,seeking=false,localFile=null,localFileId=null,localObjectUrl=null,subtitleObjectUrl=null,subtitleTrack=null,subtitleVttText=null,subtitleFileName=null,pendingSharedSubtitle=null,latestPlaybackState=null,endedQueueAdvanceKey=null;const peers=new Map(),callPeers=new Map(),callReady=new Set(),pendingScreenIce=new Map(),pendingCallIce=new Map();
 
 socket.on('connect',()=>{
   $('connection').textContent='● Serverga ulandi';
@@ -49,7 +49,7 @@ $('joinRoom').onclick=()=>{
 $('roomInput').oninput=e=>e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
 socket.on('room:error',m=>{$('entryError').textContent=m;$('videoError').textContent=m;$('fileShareStatus').textContent=m});
 socket.on('room:joined',d=>{
-  roomId=d.roomId;isHost=d.isHost;setRoomTab(d.activeActivity||'video');setGameMode(d.activeGame||'tictactoe');setSection('watch');$('publicRoomsPanel').classList.add('hidden');$('activityHub').classList.add('hidden');renderGame(d.game);applyRoomSettings(d.title||'Tomosha xonasi',d.theme||'violet',isHost,d.isPublic);siteUrl=d.siteUrl||null;siteExpanded=Boolean(d.siteExpanded);screenOwner=d.screenOwner||null;renderSharedSite(siteUrl,siteExpanded);
+  roomId=d.roomId;isHost=d.isHost;pendingSharedSubtitle=d.subtitles||null;setRoomTab(d.activeActivity||'video');setGameMode(d.activeGame||'tictactoe');setSection('watch');$('publicRoomsPanel').classList.add('hidden');$('activityHub').classList.add('hidden');renderGame(d.game);applyRoomSettings(d.title||'Tomosha xonasi',d.theme||'violet',isHost,d.isPublic);siteUrl=d.siteUrl||null;siteExpanded=Boolean(d.siteExpanded);screenOwner=d.screenOwner||null;renderSharedSite(siteUrl,siteExpanded);
   $('entry').classList.add('hidden');$('how').classList.add('hidden');$('workspace').classList.remove('hidden');
   $('roomCode').textContent=roomId;$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
   $('loadVideo').disabled=false;$('youtubeUrl').disabled=false;$('mediaType').disabled=false;$('screenShare').disabled=!!screenOwner&&screenOwner!==socket.id;$('chat').replaceChildren();
@@ -67,7 +67,7 @@ socket.on('room:role',d=>{
   isHost=d.isHost;$('roomSettings').classList.toggle('hidden',!isHost);$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
   $('loadVideo').disabled=false;$('youtubeUrl').disabled=false;$('mediaType').disabled=false;$('screenShare').disabled=!!screenOwner&&screenOwner!==socket.id;
   ['playPause','back','forward'].forEach(id=>$(id).disabled=!playerReady);
-  document.querySelectorAll('.remove-shared-video').forEach(button=>{button.disabled=!isHost;button.title=isHost?'Videoni serverdan o‘chirish':'Faqat xona egasi o‘chira oladi'});
+  document.querySelectorAll('.remove-shared-video').forEach(button=>{button.disabled=!isHost;button.title=isHost?'Videoni serverdan o‘chirish':'Faqat xona egasi o‘chira oladi'});$('shareSubtitles').disabled=!(isHost&&subtitleVttText);$('clearSharedSubtitles').disabled=!isHost;
 });
 socket.on('room:people',list=>{
   roomPeople=list;
@@ -546,6 +546,7 @@ function normalizeState(s){
   return null;
 }
 function clearSubtitles(){
+  subtitleVttText=null;subtitleFileName=null;
   if(subtitleTrack){try{subtitleTrack.remove()}catch(_){}subtitleTrack=null}
   if(subtitleObjectUrl){URL.revokeObjectURL(subtitleObjectUrl);subtitleObjectUrl=null}
   $('subtitleFileInput').value='';
@@ -553,6 +554,29 @@ function clearSubtitles(){
   $('subtitleFileInput').disabled=true;
   $('subtitleStatus').textContent=player&&player.tagName==='VIDEO'?'Subtitr tanlanmagan':'Subtitr uchun oddiy video player kerak';
 }
+function attachSubtitleContent(vtt,fileName,shared=false){
+  if(!player||player.tagName!=='VIDEO'){$('subtitleStatus').textContent='Subtitr faqat oddiy video playerda ishlaydi.';return false}
+  if(subtitleTrack){try{subtitleTrack.remove()}catch(_){}subtitleTrack=null}
+  if(subtitleObjectUrl)URL.revokeObjectURL(subtitleObjectUrl);
+  subtitleObjectUrl=URL.createObjectURL(new Blob([vtt],{type:'text/vtt;charset=utf-8'}));
+  const track=document.createElement('track');track.kind='subtitles';track.label=fileName||'Subtitrlar';track.srclang='uz';track.default=true;track.src=subtitleObjectUrl;
+  track.addEventListener('load',()=>{try{track.track.mode='showing'}catch(_){}});
+  player.append(track);subtitleTrack=track;
+  try{track.track.mode='showing'}catch(_){}
+  subtitleVttText=vtt;subtitleFileName=fileName||'Subtitrlar';
+  $('clearSubtitles').disabled=false;
+  $('shareSubtitles').disabled=!isHost;
+  $('subtitleStatus').textContent=(shared?'Umumiy subtitr: ':'Subtitr yuklandi: ')+subtitleFileName+(shared?' (xonada hamma uchun)':' (faqat sizda)');
+  return true;
+}
+function applySharedSubtitle(data){
+  if(!data||typeof data.vtt!=='string'){pendingSharedSubtitle=null;return}
+  pendingSharedSubtitle=data;
+  if(player&&player.tagName==='VIDEO')attachSubtitleContent(data.vtt,data.name||'Umumiy subtitr',true);
+  else $('subtitleStatus').textContent='Xonada subtitr bor; uni ko‘rish uchun mos video oching.';
+}
+socket.on('subtitles:shared',applySharedSubtitle);
+socket.on('subtitles:cleared',()=>{pendingSharedSubtitle=null;clearSubtitles();$('subtitleStatus').textContent='Xonadagi umumiy subtitr olib tashlandi.'});
 function convertSubtitleToVtt(text,fileName){
   if(/\.vtt$/i.test(fileName))return /^\uFEFF?WEBVTT(?:\s|$)/.test(text.trimStart())?text:'WEBVTT\n\n'+text;
   const converted=text.replace(/\r/g,'').replace(/(\d{2}:\d{2}:\d{2}),(\d{3})(\s*-->\s*\d{2}:\d{2}:\d{2}),(\d{3})/g,'$1.$2$3.$4');
@@ -567,19 +591,21 @@ async function attachSubtitles(file){
   try{
     const source=await file.text();
     const vtt=convertSubtitleToVtt(source,file.name);
-    if(subtitleTrack){subtitleTrack.remove();subtitleTrack=null}
-    if(subtitleObjectUrl)URL.revokeObjectURL(subtitleObjectUrl);
-    subtitleObjectUrl=URL.createObjectURL(new Blob([vtt],{type:'text/vtt;charset=utf-8'}));
-    const track=document.createElement('track');track.kind='subtitles';track.label=file.name;track.srclang='uz';track.default=true;track.src=subtitleObjectUrl;
-    track.addEventListener('load',()=>{try{track.track.mode='showing'}catch(_){}});
-    player.append(track);subtitleTrack=track;
-    try{track.track.mode='showing'}catch(_){}
-    $('clearSubtitles').disabled=false;
-    $('subtitleStatus').textContent='Subtitr yuklandi: '+file.name+' (faqat sizda ko‘rinadi)';
+    attachSubtitleContent(vtt,file.name,false);
   }catch(_){$('subtitleStatus').textContent='Subtitr faylini o‘qib bo‘lmadi.'}
 }
 $('subtitleFileInput').addEventListener('change',e=>attachSubtitles(e.target.files&&e.target.files[0]));
 $('clearSubtitles').addEventListener('click',clearSubtitles);
+$('shareSubtitles').addEventListener('click',()=>{
+  if(!roomId||!isHost||!subtitleVttText)return;
+  if(new Blob([subtitleVttText]).size>512*1024){$('subtitleStatus').textContent='Xonaga ulashish uchun subtitr 512 KB dan kichik bo‘lishi kerak.';return}
+  socket.emit('subtitles:share',{name:subtitleFileName,vtt:subtitleVttText},result=>{
+    if(!result||!result.ok)$('subtitleStatus').textContent=result&&result.error||'Subtitrni xonaga ulashib bo‘lmadi.';
+  });
+});
+$('clearSharedSubtitles').addEventListener('click',()=>{
+  if(roomId&&isHost)socket.emit('subtitles:clear');
+});
 function destroyPlayer(){
   clearSubtitles();
   if(hlsInstance){try{hlsInstance.destroy()}catch(e){}hlsInstance=null}
@@ -597,6 +623,9 @@ function markReady(state){
   $('playbackRate').disabled=!(media&&['youtube','vimeo','file','hls','local'].includes(media.mediaType));
   $('subtitleFileInput').disabled=!(player&&player.tagName==='VIDEO');
   $('subtitleStatus').textContent=player&&player.tagName==='VIDEO'?'SRT yoki VTT fayl tanlang':'Bu playerda subtitr fayli qo‘llanmaydi';
+  $('shareSubtitles').disabled=!(isHost&&subtitleVttText);
+  $('clearSharedSubtitles').disabled=!isHost;
+  if(player&&player.tagName==='VIDEO'&&pendingSharedSubtitle)applySharedSubtitle(pendingSharedSubtitle);
   applyPlaybackRate();
   $('placeholder').classList.add('hidden');
   $('playState').textContent='Tayyor';
