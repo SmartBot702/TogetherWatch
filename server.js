@@ -12,6 +12,35 @@ const server = http.createServer(app);
 const io = new Server(server, { maxHttpBufferSize: 1e6 });
 const PORT = process.env.PORT || 3000;
 const rooms = new Map();
+const roomSaveTimers = new Map();
+function persistRoom(room, immediate = false) {
+  if (!room || typeof auth.saveRoomSnapshot !== 'function') return;
+  const id = room.id;
+  const pending = roomSaveTimers.get(id);
+  if (pending) {
+    if (!immediate) return;
+    clearTimeout(pending);
+    roomSaveTimers.delete(id);
+  }
+  const timer = setTimeout(() => {
+    roomSaveTimers.delete(id);
+    const current = rooms.get(id);
+    if (current) auth.saveRoomSnapshot(current).catch(err => console.error('Room save failed:', err.message));
+  }, immediate ? 0 : 3000);
+  if (timer.unref) timer.unref();
+  roomSaveTimers.set(id, timer);
+}
+function discardRoom(id) {
+  const pending = roomSaveTimers.get(id);
+  if (pending) clearTimeout(pending);
+  roomSaveTimers.delete(id);
+  rooms.delete(id);
+  if (typeof auth.deleteRoomSnapshot === 'function') auth.deleteRoomSnapshot(id).catch(err => console.error('Room cleanup failed:', err.message));
+}
+const roomPersistenceHeartbeat = setInterval(() => {
+  for (const room of rooms.values()) if (room.members.size) persistRoom(room);
+}, 60 * 1000);
+if (roomPersistenceHeartbeat.unref) roomPersistenceHeartbeat.unref();
 
 app.disable('x-powered-by');
 app.use(express.json({ limit: '20kb' }));
@@ -127,7 +156,7 @@ app.get('/api/extract', async (req, res) => {
 
 function makeCode() {
   for (const [id, room] of rooms) {
-    if (!room.members.size && room.emptyAt && Date.now() - room.emptyAt > 6 * 60 * 60 * 1000) rooms.delete(id);
+    if (!room.members.size && room.emptyAt && Date.now() - room.emptyAt > 6 * 60 * 60 * 1000) discardRoom(id);
   }
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code;
@@ -189,13 +218,13 @@ function leave(socket) {
       if (s) s.emit('room:role', { isHost: true });
     }
   }
-  if (!r.members.size) r.emptyAt = Date.now();
-  else broadcastPeople(id);
+  if (!r.members.size) { r.emptyAt = Date.now(); persistRoom(r, true); }
+  else { broadcastPeople(id); persistRoom(r); }
 }
 function enter(socket, id, name, create) {
   if (!name) return error(socket, 'Ismingizni kiriting.');
   let r = rooms.get(id);
-  if (r && !r.members.size && r.emptyAt && Date.now() - r.emptyAt > 6 * 60 * 60 * 1000) { rooms.delete(id); r = null; }
+  if (r && !r.members.size && r.emptyAt && Date.now() - r.emptyAt > 6 * 60 * 60 * 1000) { discardRoom(id); r = null; }
   if (!r && create) { r = { id, hostId: socket.id, members: new Map(), callReady: new Set(), state: emptyState(), queue: [], messages: [], siteUrl: null, siteExpanded: false, screenOwner: null }; rooms.set(id, r); }
   if (r && !Array.isArray(r.messages)) r.messages = [];
   if (!r) return error(socket, 'Xona topilmadi. Kodni tekshiring.');
@@ -211,6 +240,7 @@ function enter(socket, id, name, create) {
   for (const memberId of (r.callReady || [])) if (memberId !== socket.id) socket.emit('rtc:ready', { from: memberId, ready: true });
   socket.to(id).emit('room:system', name + ' xonaga qo‘shildi.');
   broadcastPeople(id);
+  persistRoom(r);
 }
 io.on('connection', socket => {
   socket.on('room:create', p => {
@@ -237,6 +267,7 @@ io.on('connection', socket => {
       r.messages.push(message);
       if (r.messages.length > 100) r.messages.splice(0, r.messages.length - 100);
       io.to(id).emit('chat:message', message);
+      persistRoom(r);
     }
   });
   socket.on('queue:add', p => {
@@ -248,12 +279,14 @@ io.on('connection', socket => {
     if (r.queue.length >= 50) return error(socket, 'Video navbati 50 ta bilan cheklangan.');
     r.queue.push({ ...media, queueId: crypto.randomBytes(8).toString('hex'), addedBy: socket.data.name });
     io.to(id).emit('queue:updated', r.queue);
+    persistRoom(r);
   });
   socket.on('queue:remove', p => {
     const id = socket.data.roomId, r = rooms.get(id);
     if (!r || !r.members.has(socket.id) || !p || typeof p.queueId !== 'string') return;
     r.queue = (r.queue || []).filter(item => item.queueId !== p.queueId);
     io.to(id).emit('queue:updated', r.queue);
+    persistRoom(r);
   });
   socket.on('queue:next', () => {
     const id = socket.data.roomId, r = rooms.get(id);
@@ -263,6 +296,7 @@ io.on('connection', socket => {
     r.state = { ...media, isPlaying: false, currentTime: 0, updatedAt: Date.now() };
     io.to(id).emit('video:loaded', r.state);
     io.to(id).emit('queue:updated', r.queue);
+    persistRoom(r);
   });
   socket.on('queue:play', p => {
     const id = socket.data.roomId, r = rooms.get(id);
@@ -274,6 +308,7 @@ io.on('connection', socket => {
     r.state = { ...media, isPlaying: false, currentTime: 0, updatedAt: Date.now() };
     io.to(id).emit('video:loaded', r.state);
     io.to(id).emit('queue:updated', r.queue);
+    persistRoom(r);
   });
   socket.on('video:load', p => {
     const id = socket.data.roomId, r = rooms.get(id);
@@ -282,6 +317,7 @@ io.on('connection', socket => {
     if (!media) return error(socket, 'YouTube, Vimeo yoki to‘g‘ridan-to‘g‘ri MP4/WebM havolasini kiriting.');
     r.state = { ...media, isPlaying: false, currentTime: 0, updatedAt: Date.now() };
     io.to(id).emit('video:loaded', r.state);
+    persistRoom(r);
   });
   function playback(p) {
     const id = socket.data.roomId, r = rooms.get(id);
@@ -294,6 +330,7 @@ io.on('connection', socket => {
     if (!Number.isFinite(t) || t < 0 || t > 86400) return;
     r.state = { ...r.state, isPlaying: Boolean(p.isPlaying), currentTime: t, updatedAt: Date.now() };
     socket.to(id).emit('video:state', r.state);
+    persistRoom(r);
   }
   socket.on('video:state', playback);
   socket.on('video:heartbeat', playback);
@@ -306,6 +343,7 @@ io.on('connection', socket => {
       if (!['http:', 'https:'].includes(u.protocol)) return error(socket, 'Faqat http yoki https sayt havolasi mumkin.');
       r.siteUrl = u.href; r.siteExpanded = false;
       io.to(id).emit('site:shared', { url: r.siteUrl, expanded: false, by: socket.data.name });
+      persistRoom(r);
     } catch (_) { error(socket, 'Sayt havolasi noto‘g‘ri.'); }
   });
   socket.on('site:expand', p => {
@@ -313,6 +351,7 @@ io.on('connection', socket => {
     if (!r || !r.members.has(socket.id) || !r.siteUrl) return;
     r.siteExpanded = Boolean(p && p.expanded);
     io.to(id).emit('site:shared', { url: r.siteUrl, expanded: r.siteExpanded, by: socket.data.name });
+    persistRoom(r);
   });
   socket.on('screen:started', () => {
     const id = socket.data.roomId, r = rooms.get(id);
@@ -354,7 +393,20 @@ io.on('connection', socket => {
 
   socket.on('disconnect', () => leave(socket));
 });
-auth.attach(app).then(() => {
+auth.attach(app).then(async () => {
+  const savedRooms = await auth.loadRoomSnapshots();
+  for (const saved of savedRooms) {
+    const payload = saved.payload || {};
+    const room = {
+      id: saved.id, hostId: null, members: new Map(), callReady: new Set(),
+      state: payload.state || emptyState(), queue: Array.isArray(payload.queue) ? payload.queue : [],
+      messages: Array.isArray(payload.messages) ? payload.messages.slice(-100) : [],
+      siteUrl: payload.siteUrl || null, siteExpanded: Boolean(payload.siteExpanded),
+      screenOwner: null, emptyAt: saved.emptyAt || Date.now()
+    };
+    rooms.set(room.id, room);
+    persistRoom(room, true);
+  }
   app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-  server.listen(PORT, '0.0.0.0', () => console.log('TogetherWatch listening on ' + PORT));
+  server.listen(PORT, '0.0.0.0', () => console.log('TogetherWatch listening on ' + PORT + ' (restored ' + savedRooms.length + ' rooms)'));
 }).catch(err => { console.error('Account API initialization failed:', err); process.exit(1); });

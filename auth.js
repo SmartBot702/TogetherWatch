@@ -84,6 +84,28 @@ function currentUser(req) {
 }
 function fail(res, status, error) { return res.status(status).json({ ok: false, error }); }
 
+async function loadRoomSnapshots() {
+  if (!pool) return [];
+  await pool.query('CREATE TABLE IF NOT EXISTS togetherwatch_rooms (room_id varchar(6) PRIMARY KEY, payload jsonb NOT NULL, empty_at bigint, updated_at timestamptz NOT NULL DEFAULT now())');
+  const cutoff = Date.now() - 6 * 60 * 60 * 1000;
+  await pool.query("DELETE FROM togetherwatch_rooms WHERE (empty_at IS NOT NULL AND empty_at <= $1) OR (empty_at IS NULL AND updated_at <= now() - interval '6 hours')", [cutoff]);
+  const result = await pool.query("SELECT room_id, payload, empty_at FROM togetherwatch_rooms WHERE (empty_at IS NULL AND updated_at > now() - interval '6 hours') OR empty_at > $1 ORDER BY updated_at DESC", [cutoff]);
+  return result.rows.map(row => ({ id: row.room_id, payload: row.payload, emptyAt: row.empty_at == null ? null : Number(row.empty_at) }));
+}
+async function saveRoomSnapshot(room) {
+  if (!pool || !room || !/^[A-Z0-9]{6}$/.test(room.id)) return;
+  const payload = {
+    state: room.state || {}, queue: Array.isArray(room.queue) ? room.queue.slice(0, 50) : [],
+    messages: Array.isArray(room.messages) ? room.messages.slice(-100) : [],
+    siteUrl: typeof room.siteUrl === 'string' ? room.siteUrl : null,
+    siteExpanded: Boolean(room.siteExpanded)
+  };
+  await pool.query('INSERT INTO togetherwatch_rooms (room_id, payload, empty_at, updated_at) VALUES ($1, $2::jsonb, $3, now()) ON CONFLICT (room_id) DO UPDATE SET payload = EXCLUDED.payload, empty_at = EXCLUDED.empty_at, updated_at = now()', [room.id, JSON.stringify(payload), room.emptyAt || null]);
+}
+async function deleteRoomSnapshot(roomId) {
+  if (pool && /^[A-Z0-9]{6}$/.test(roomId || '')) await pool.query('DELETE FROM togetherwatch_rooms WHERE room_id = $1', [roomId]);
+}
+
 async function attach(app) {
   await load();
   app.use('/api/auth', require('express').json({ limit: '20kb' }));
@@ -209,4 +231,4 @@ async function attach(app) {
     res.json({ ok: true });
   });
 }
-module.exports = { attach };
+module.exports = { attach, loadRoomSnapshots, saveRoomSnapshot, deleteRoomSnapshot };
