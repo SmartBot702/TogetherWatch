@@ -197,9 +197,10 @@ async function attach(app, io) {
     const displayName = clean(req.body && req.body.displayName, 40);
     const bio = clean(req.body && req.body.bio, 160);
     const avatar = clean(req.body && req.body.avatar, 500);
+    // Validate the complete patch before mutating the in-memory account record.
+    if (avatar && !/^https:\/\/[^\s]+$/i.test(avatar)) return fail(res, 400, 'Avatar uchun HTTPS havola kerak.');
     if (displayName) user.displayName = displayName;
     user.bio = bio;
-    if (avatar && !/^https:\/\/[^\s]+$/i.test(avatar)) return fail(res, 400, 'Avatar uchun HTTPS havola kerak.');
     user.avatar = avatar;
     await save();
     res.json({ ok: true, user: publicUser(user) });
