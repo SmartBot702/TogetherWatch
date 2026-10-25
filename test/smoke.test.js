@@ -92,6 +92,10 @@ test('two clients share a room, activity selection, and chat in realtime', async
     assert.ok(healthy, 'server did not become healthy: ' + output.slice(-1500));
 
     const url = 'http://127.0.0.1:' + port;
+    for (const asset of ['/manifest.webmanifest', '/sw.js', '/icon.svg', '/app.js']) {
+      const response = await fetch(url + asset);
+      assert.equal(response.status, 200, 'asset not served: ' + asset);
+    }
     host = connect(url, { transports: ['websocket'], reconnection: false, timeout: 5000 });
     guest = connect(url, { transports: ['websocket'], reconnection: false, timeout: 5000 });
     await Promise.all([waitForEvent(host, 'connect'), waitForEvent(guest, 'connect')]);
