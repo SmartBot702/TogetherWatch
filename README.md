@@ -42,12 +42,13 @@ Caddy HTTPS sertifikatini avtomatik oladi. Domen DNS’i serverga qaragan va 80/
 
 ## Render
 
-render.yaml Node.js xizmatining asosiy qismini joylashtiradi, lekin Docker Compose’dagi Browserless va PostgreSQL servislarini avtomatik ishga tushirmaydi. To‘liq umumiy brauzer va saqlanadigan akkauntlar uchun yuqoridagi Docker stack yoki xususiy Chromium endpoint va PostgreSQL bilan alohida sozlash kerak.
+render.yaml Node.js xizmatining asosiy qismini joylashtiradi, lekin Docker Compose’dagi Browserless va PostgreSQL servislarini avtomatik ishga tushirmaydi. Render Free disk doimiy emas: qayta deploy/restart bo‘lsa yuklangan kinolar yo‘qolishi mumkin. Kinolarni saqlab qolish uchun doimiy disk biriktirilgan hosting yoki yuqoridagi Docker Compose volume’idan foydalaning. To‘liq umumiy brauzer va saqlanadigan akkauntlar uchun Docker stack yoki xususiy Chromium endpoint va PostgreSQL bilan alohida sozlash kerak.
 
 ## Imkoniyatlar
 
 - Xona yaratish/qo‘shilish, taklif kodi va havola, 20 tagacha ishtirokchi.
-- YouTube, Vimeo, MP4/WebM va HLS uchun sinxron playback (saytning embed va DRM qoidalariga bog‘liq).
+- YouTube, Vimeo, VK Video, OK.ru va Rutube embed’lari; MP4/WebM/M4V/OGV hamda HLS uchun sinxron playback (platforma va DRM cheklovlari bo‘lishi mumkin).
+- Xonaga 4 GB gacha bo‘lgan MP4/WebM/M4V/OGV kinoni bo‘laklab yuklash, HTTP Range orqali oqimli ijro va sinxron Play/Pause/seek. MAX_VIDEO_UPLOAD_MB bilan bitta video limitini, MAX_ROOM_VIDEO_GB bilan xona jami limitini sozlash mumkin.
 - Umumiy chat, akkaunt/profil, do‘stlar va shaxsiy xabarlar.
 - Ovoz/video qo‘ng‘iroqlari va WebRTC ekran ulashish.
 - Bir xil masofaviy Chromium sahifasini hamma birga boshqaradigan umumiy brauzer.
@@ -60,6 +61,7 @@ render.yaml Node.js xizmatining asosiy qismini joylashtiradi, lekin Docker Compo
 - DRM, CAPTCHA, login talablari va saytning bot-himoyasi ayrim sahifalarni ishlatishga to‘sqinlik qilishi mumkin. Bu barcha saytlar uchun kafolatlangan 1:1 moslik emas.
 - Ovoz/video va ekran ulashish uchun HTTPS hamda brauzer ruxsatlari kerak. Ayrim tarmoqlarda TURN_URLS, TURN_USERNAME, TURN_CREDENTIAL sozlash talab etiladi.
 - .env faylini GitHub’ga yuklamang. Docker volume’lar ma’lumotni saqlaydi; muntazam PostgreSQL backup ham sozlang.
+- Katta video fayllari server diskida joy egallaydi va har bir tomoshabinga serverdan oqim uzatiladi; hosting bandwidth va disk limitlarini hisobga oling. Docker Compose’da yuklangan videolar `togetherwatch_uploads` volume’ida saqlanadi.
 - Kontentni qayta tarqatmang; video platformalarining mualliflik huquqi va foydalanish shartlariga rioya qiling.
 
 
