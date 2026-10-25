@@ -57,6 +57,20 @@ test('playback speed control supports native, YouTube and Vimeo players', () => 
   assert.match(app, /\$\('playbackRate'\)\.disabled=true/);
 });
 
+test('local subtitle controls support SRT and VTT for native video players', () => {
+  const html = read('public/index.html');
+  const app = read('public/app.js');
+  const readme = read('README.md');
+  assert.match(html, /id="subtitleFileInput"/);
+  assert.match(html, /accept="\.srt,\.vtt,text\/vtt,application\/x-subrip"/);
+  assert.match(html, /id="clearSubtitles"/);
+  assert.match(app, /function convertSubtitleToVtt\(text,fileName\)/);
+  assert.match(app, /\(\\d\{2\}:\\d\{2\}:\\d\{2\}\),\(\\d\{3\}\)/);
+  assert.match(app, /file\.size>2\*1024\*1024/);
+  assert.match(app, /URL\.revokeObjectURL\(subtitleObjectUrl\)/);
+  assert.match(readme, /Subtitrlar \.srt\/\.vtt/);
+});
+
 test('uploaded videos can be removed by the room host and disappear for everyone', () => {
   const server = read('server.js');
   const app = read('public/app.js');
