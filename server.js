@@ -235,7 +235,7 @@ function enter(socket, id, name, create, options = {}) {
   if (!name) return error(socket, 'Ismingizni kiriting.');
   let r = rooms.get(id);
   if (r && !r.members.size && r.emptyAt && Date.now() - r.emptyAt > 6 * 60 * 60 * 1000) { discardRoom(id); r = null; }
-  if (!r && create) { r = { id, hostId: socket.id, members: new Map(), callReady: new Set(), state: emptyState(), queue: [], messages: [], siteUrl: null, siteExpanded: false, screenOwner: null, browserSession: null, activeActivity: 'video', title: cleanRoomTitle(options.title) || 'Tomosha xonasi', theme: cleanRoomTheme(options.theme), isPublic: Boolean(options.isPublic), game: { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 }, boardStrokes: [] }; rooms.set(id, r); }
+  if (!r && create) { r = { id, hostId: socket.id, members: new Map(), callReady: new Set(), state: emptyState(), queue: [], messages: [], siteUrl: null, siteExpanded: false, screenOwner: null, browserSession: null, activeActivity: 'video', title: cleanRoomTitle(options.title) || 'Tomosha xonasi', theme: cleanRoomTheme(options.theme), isPublic: Boolean(options.isPublic), game: { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 }, activeGame: 'tictactoe', connectFour: { board: Array.from({length:6},()=>Array(7).fill(null)), turn: 'R', winner: null, moves: 0 }, boardStrokes: [] }; rooms.set(id, r); }
   if (!r.title) r.title = 'Tomosha xonasi';
   if (!r.theme) r.theme = 'violet';
   if (r && !Array.isArray(r.messages)) r.messages = [];
@@ -248,7 +248,7 @@ function enter(socket, id, name, create, options = {}) {
   socket.data.roomId = id;
   socket.data.name = name;
   r.members.set(socket.id, { id: socket.id, name });
-  socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, title: r.title, theme: r.theme, state: r.state, queue: r.queue || [], chatHistory: r.messages.slice(-100), siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner, isPublic: Boolean(r.isPublic), activeActivity: r.activeActivity || 'video', game: r.game || { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 } });
+  socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, title: r.title, theme: r.theme, state: r.state, queue: r.queue || [], chatHistory: r.messages.slice(-100), siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner, isPublic: Boolean(r.isPublic), activeActivity: r.activeActivity || 'video', activeGame: r.activeGame || 'tictactoe', game: r.game || { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 }, connectFour: r.connectFour || { board: Array.from({length:6},()=>Array(7).fill(null)), turn: 'R', winner: null, moves: 0 } });
   for (const file of (r.files || [])) socket.emit('file:shared', file);
   for (const link of (r.links || [])) socket.emit('link:shared', link);
   socket.emit('board:history', Array.isArray(r.boardStrokes) ? r.boardStrokes.slice(-2000) : []);
@@ -482,6 +482,44 @@ io.on('connection', socket => {
     io.to(id).emit('game:state', r.game);
     persistRoom(r);
   });
+  socket.on('game:select', p => {
+    const id = socket.data.roomId, r = rooms.get(id);
+    const mode = p && p.mode === 'connect4' ? 'connect4' : p && p.mode === 'tictactoe' ? 'tictactoe' : null;
+    if (!r || !r.members.has(socket.id) || !mode) return;
+    r.activeGame = mode;
+    io.to(id).emit('game:mode', { mode, by: socket.data.name });
+    persistRoom(r);
+  });
+  socket.on('connect4:move', p => {
+    const id = socket.data.roomId, r = rooms.get(id);
+    if (!r || !r.members.has(socket.id) || !p || !Number.isInteger(p.column) || p.column < 0 || p.column > 6) return;
+    if (!r.connectFour) r.connectFour = { board: Array.from({length:6},()=>Array(7).fill(null)), turn: 'R', winner: null, moves: 0 };
+    const g = r.connectFour;
+    if (g.winner) return socket.emit('connect4:error', 'O‘yin tugagan. Qayta boshlang.');
+    let row = -1;
+    for (let y=5;y>=0;y--) if (g.board[y][p.column]===null) { row=y; break; }
+    if (row<0) return socket.emit('connect4:error', 'Bu ustun to‘la.');
+    const mark=g.turn;
+    g.board[row][p.column]=mark;g.moves++;
+    const directions=[[0,1],[1,0],[1,1],[1,-1]];
+    let won=false;
+    for(const [dy,dx] of directions){
+      let count=1;
+      for(const sign of [-1,1]){
+        let y=row+dy*sign,x=p.column+dx*sign;
+        while(y>=0&&y<6&&x>=0&&x<7&&g.board[y][x]===mark){count++;y+=dy*sign;x+=dx*sign;}
+      }
+      if(count>=4){won=true;break;}
+    }
+    if(won)g.winner=mark;else if(g.moves>=42)g.winner='draw';else g.turn=mark==='R'?'Y':'R';
+    io.to(id).emit('connect4:state',g);persistRoom(r);
+  });
+  socket.on('connect4:reset', () => {
+    const id = socket.data.roomId, r = rooms.get(id);
+    if (!r || !r.members.has(socket.id)) return;
+    r.connectFour = { board: Array.from({length:6},()=>Array(7).fill(null)), turn: 'R', winner: null, moves: 0 };
+    io.to(id).emit('connect4:state',r.connectFour);persistRoom(r);
+  });
 
 
 
@@ -682,6 +720,9 @@ auth.attach(app, io).then(async () => {
     const room = {
       id: saved.id, hostId: null, members: new Map(), callReady: new Set(),
       state: payload.state || emptyState(), queue: Array.isArray(payload.queue) ? payload.queue : [],
+      game: payload.game && Array.isArray(payload.game.board) && payload.game.board.length === 9 ? payload.game : { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 },
+      activeGame: payload.activeGame === 'connect4' ? 'connect4' : 'tictactoe',
+      connectFour: payload.connectFour && Array.isArray(payload.connectFour.board) && payload.connectFour.board.length === 6 ? payload.connectFour : { board: Array.from({length:6},()=>Array(7).fill(null)), turn: 'R', winner: null, moves: 0 },
       messages: Array.isArray(payload.messages) ? payload.messages.slice(-100) : [],
       siteUrl: payload.siteUrl || null, siteExpanded: Boolean(payload.siteExpanded),
       title: typeof payload.title === 'string' ? payload.title : 'Tomosha xonasi', theme: cleanRoomTheme(payload.theme),
