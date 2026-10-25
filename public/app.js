@@ -17,9 +17,9 @@ socket.on('disconnect',()=>{
 });
 
 let activeRoomTab='video';
-const activityLabels={video:'Video tomosha',site:'Umumiy brauzer',games:'O‘yinlar',board:'Birgalikda chizish',files:'Fayllar',screen:'Ekran ulashish',call:'Ovoz/video suhbat',people:'Ishtirokchilar'};
+const activityLabels={video:'Kino',files:'Fayllar',people:'Ishtirokchilar'};
 function setRoomTab(tab){
-  const allowed=new Set(Object.keys(activityLabels));
+  const allowed=new Set(['video','files','people']);
   activeRoomTab=allowed.has(tab)?tab:'video';
   document.querySelectorAll('[data-room-tab]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.roomTab===activeRoomTab)));
   document.querySelectorAll('[data-room-section]').forEach(section=>{section.hidden=section.dataset.roomSection!==activeRoomTab});
@@ -76,7 +76,7 @@ socket.on('room:people',list=>{
   for(const id of Array.from(callReady))if(!memberIds.has(id))callReady.delete(id);
   if(screenStream&&screenOwner===socket.id)syncScreenPeers();
   if(callStream)syncCallPeers();
-  $('peopleCount').textContent=list.length;$('people').replaceChildren();
+  $('peopleCount').textContent=list.length;if($('navPeopleCount'))$('navPeopleCount').textContent=list.length;$('people').replaceChildren();
   list.forEach(p=>{const el=document.createElement('span');el.className='person';el.textContent=p.name+(p.isHost?' ★':'');$('people').append(el)});
 });
 function system(t){const e=document.createElement('div');e.className='system';e.textContent=t;$('chat').append(e);scroll()}
@@ -671,14 +671,20 @@ $('seekRange').addEventListener('change',async e=>{
 });
 setInterval(updatePlayerTimeline,1000);
 $('volume').addEventListener('input',e=>{volume=Math.max(0,Math.min(1,Number(e.target.value)||0));if(volume>0)muted=false;applyVolume()});
+const chatPanel=$('chatPanel'),chatAside=$('chatAside'),videoPlayerPanel=$('videoPlayerPanel');
 $('videoFullscreen').onclick=async()=>{
   try{
     if(document.fullscreenElement)await document.exitFullscreen();
-    else if($('video').requestFullscreen)await $('video').requestFullscreen();
+    else if(videoPlayerPanel.requestFullscreen)await videoPlayerPanel.requestFullscreen();
     else $('videoError').textContent='Bu brauzer to‘liq ekran rejimini qo‘llamaydi.';
   }catch(e){$('videoError').textContent='To‘liq ekran rejimiga o‘tib bo‘lmadi.'}
 };
-document.addEventListener('fullscreenchange',()=>{$('videoFullscreen').textContent=document.fullscreenElement?'⤢ Ekrandan chiqish':'⛶ To‘liq ekran'});
+document.addEventListener('fullscreenchange',()=>{
+  const active=document.fullscreenElement===videoPlayerPanel;
+  $('videoFullscreen').textContent=active?'⤢ Ekrandan chiqish':'⛶ To‘liq ekran';
+  if(active){videoPlayerPanel.append(chatPanel);chatPanel.classList.add('fullscreen-chat-overlay');}
+  else if(chatAside&&!chatAside.contains(chatPanel)){chatAside.insertBefore(chatPanel,chatAside.firstChild);chatPanel.classList.remove('fullscreen-chat-overlay');}
+});
 function emitPlayback(playing,time){
   if(!media||!roomId)return;
   socket.emit('video:state',{mediaType:media.mediaType,mediaId:media.mediaId,mediaUrl:media.mediaUrl,videoId:media.videoId,isPlaying:!!playing,currentTime:Math.max(0,Number(time)||0)});
