@@ -6,6 +6,7 @@ const path = require('path');
 const crypto = require('crypto');
 const dns = require('dns').promises;
 const net = require('net');
+const { Readable } = require('stream');
 const { Server } = require('socket.io');
 const auth = require('./auth');
 
@@ -198,6 +199,46 @@ function mediaCandidates(html, pageUrl) {
   for (const item of jsonUrls) { const m = item.match(/:\s*"([^"]+)"/); if (m) add(m[1]); }
   return [...new Set(found)].sort((a,b) => (/\.m3u8$/i.test(b) ? 1 : 0) - (/\.m3u8$/i.test(a) ? 1 : 0));
 }
+app.get('/api/media-proxy', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const raw = typeof req.query.url === 'string' ? req.query.url.slice(0, 2048) : '';
+  if (!raw) return res.status(400).send('Video URL kerak.');
+  let target;
+  try { target = await safePublicUrl(raw); }
+  catch (_) { return res.status(400).send('Video manzili xavfsizlik tekshiruvidan o‘tmadi.'); }
+  const controller = new AbortController();
+  res.on('close', () => { if (!res.writableEnded) controller.abort(); });
+  try {
+    let upstream;
+    for (let hop = 0; hop < 4; hop++) {
+      upstream = await fetch(target.href, {
+        redirect: 'manual', signal: controller.signal,
+        headers: { ...(req.headers.range ? { range: req.headers.range } : {}), 'user-agent': 'TogetherWatch-MediaRelay/1.0' }
+      });
+      if (![301,302,303,307,308].includes(upstream.status)) break;
+      const location = upstream.headers.get('location');
+      if (!location) return res.status(502).send('Video serveri yo‘naltirish manzilini bermadi.');
+      target = await safePublicUrl(new URL(location, target).href);
+      if (hop === 3) return res.status(502).send('Video serveri juda ko‘p qayta yo‘naltirdi.');
+    }
+    const contentType = String(upstream.headers.get('content-type') || '').split(';')[0].toLowerCase();
+    const knownVideoPath = /\.(mp4|webm|m4v|ogv)$/i.test(new URL(target.href).pathname);
+    if (!/^video\//.test(contentType) && !(knownVideoPath && /^(application\/octet-stream|binary\/octet-stream)$/.test(contentType))) {
+      if (upstream.body) await upstream.body.cancel().catch(() => {});
+      return res.status(415).send('Bu manzil to‘g‘ridan-to‘g‘ri video oqimi emas. HLS va himoyalangan oqimlar alohida ishlov talab qiladi.');
+    }
+    for (const name of ['content-type','content-length','content-range','accept-ranges','etag','last-modified']) {
+      const value = upstream.headers.get(name); if (value) res.set(name, value);
+    }
+    res.status(upstream.status);
+    if (!upstream.body) return res.end();
+    Readable.fromWeb(upstream.body).on('error', () => { if (!res.headersSent) res.status(502); res.destroy(); }).pipe(res);
+  } catch (err) {
+    if (!res.headersSent && !res.destroyed) res.status(502).send('Video oqimini server orqali olish muvaffaqiyatsiz bo‘ldi.');
+    else if (!res.destroyed) res.destroy();
+  }
+});
+
 app.get('/api/extract', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   const raw = typeof req.query.url === 'string' ? req.query.url.slice(0, 2048) : '';
@@ -292,6 +333,7 @@ function normalizeMedia(p) {
   if (type === 'file' || type === 'hls') {
     const raw = typeof p.mediaUrl === 'string' ? p.mediaUrl.slice(0, 2048) : '';
     try {
+      if (raw.startsWith('/api/media-proxy?url=')) return type === 'file' ? { mediaType: 'file', mediaId: raw, mediaUrl: raw, videoId: null } : null;
       const u = new URL(raw);
       const okPath = type === 'hls' ? /\.m3u8$/i.test(u.pathname) : true;
       if (!['http:', 'https:'].includes(u.protocol) || !okPath) return null;
@@ -961,7 +1003,8 @@ io.on('connection', socket => {
     const mediaUrl = p.url.slice(0, 2048);
     try { await validateMediaSource({ mediaType, mediaUrl }); }
     catch (_) { return error(socket, 'Aniqlangan video havolasi xavfsizlik tekshiruvidan o‘tmadi.'); }
-    const media = normalizeMedia({ mediaType, mediaId: mediaUrl, mediaUrl });
+    const playerUrl = mediaType === 'file' ? '/api/media-proxy?url=' + encodeURIComponent(mediaUrl) : mediaUrl;
+    const media = normalizeMedia({ mediaType, mediaId: playerUrl, mediaUrl: playerUrl });
     if (!media) return error(socket, 'Aniqlangan video formati qo‘llab-quvvatlanmaydi.');
     r.state = { ...media, isPlaying: false, currentTime: 0, updatedAt: Date.now() };
     io.to(id).emit('video:loaded', r.state);
