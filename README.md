@@ -49,6 +49,7 @@ render.yaml Node.js xizmatining asosiy qismini joylashtiradi, lekin Docker Compo
 - Xona yaratish/qo‘shilish, taklif kodi va havola, 20 tagacha ishtirokchi.
 - YouTube, Vimeo, VK Video, OK.ru, Rutube va Google Drive video havolalari; MP4/WebM/M4V/OGV hamda HLS uchun playback. YouTube/Vimeo va yuklangan videolarda sinxron boshqaruv mavjud; tashqi player imkoniyatlari platformaga bog‘liq.
 - Xonaga 4 GB gacha bo‘lgan MP4/WebM/M4V/OGV kinoni bo‘laklab yuklash, HTTP Range orqali oqimli ijro va sinxron Play/Pause/seek. MAX_VIDEO_UPLOAD_MB bilan bitta video limitini, MAX_ROOM_VIDEO_GB bilan xona jami limitini sozlash mumkin.
+- Qo‘llab-quvvatlanadigan video playerlarda 0.5×–2× ijro tezligini tanlash (tezlik har bir tomoshabinda alohida sozlanadi).
 - Umumiy chat, akkaunt/profil, do‘stlar va shaxsiy xabarlar.
 - Ovoz/video qo‘ng‘iroqlari va WebRTC ekran ulashish.
 - Bir xil masofaviy Chromium sahifasini hamma birga boshqaradigan umumiy brauzer.
