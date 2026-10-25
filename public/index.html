@@ -81,7 +81,7 @@ button:disabled{cursor:not-allowed}
 #videoPlayerPanel:fullscreen>:not(#video):not(#chatPanel){display:none!important}
 #videoPlayerPanel:fullscreen>#chatPanel{position:absolute;z-index:20;top:7vh;right:2vw;width:min(340px,36vw);max-height:76vh;display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid #ffffff26;border-radius:16px;background:rgba(12,9,20,.43);backdrop-filter:blur(9px);box-shadow:0 8px 36px #0005}
 #videoPlayerPanel:fullscreen>#chatPanel .title{font-size:.9rem;margin:0;color:#fff}
-#videoPlayerPanel:fullscreen>#chat{height:auto;max-height:54vh;min-height:80px;overflow:auto;margin:0;scrollbar-width:thin}
+#videoPlayerPanel:fullscreen #chat{height:auto;max-height:54vh;min-height:80px;overflow:auto;margin:0;scrollbar-width:thin}
 #videoPlayerPanel:fullscreen>#chatPanel #typingIndicator{min-height:0!important;font-size:.72rem;color:#eee}
 #videoPlayerPanel:fullscreen>#chatPanel #chatForm{display:flex;gap:5px}
 #videoPlayerPanel:fullscreen>#chatPanel #chatText{font-size:.85rem;min-height:38px;padding:8px;background:rgba(14,11,23,.62);border-color:#ffffff35}
@@ -96,7 +96,7 @@ button:disabled{cursor:not-allowed}
  #chatAside{order:2}
  #chat{height:230px}
  #videoPlayerPanel:fullscreen>#chatPanel{top:auto;right:10px;bottom:12px;width:min(310px,83vw);max-height:48vh;padding:9px;background:rgba(12,9,20,.38)}
- #videoPlayerPanel:fullscreen>#chat{max-height:30vh}
+ #videoPlayerPanel:fullscreen #chat{max-height:30vh}
 }
 
 </style></head><body><header class="wrap"><div class="brand">Together<span>Watch</span></div><button class="btn hidden" id="installApp" type="button">＋ Ilovani o‘rnatish</button><div class="row"><select id="language" class="field" aria-label="Language" style="width:auto;padding:7px;max-width:145px"><option value="uz">O‘zbekcha</option><option value="en">English</option><option value="ru">Русский</option><option value="es">Español</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="pt">Português</option><option value="zh">中文</option><option value="hi">हिन्दी</option><option value="ar">العربية</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="tr">Türkçe</option><option value="it">Italiano</option><option value="id">Bahasa Indonesia</option></select><div class="status" id="connection">● Serverga ulanmoqda…</div></div></header><main class="wrap"><section class="hero"><h1 id="heroTitle">Filmni birga ko‘ring.<br><span style="color:#b9a3ff">Masofadan ham.</span></h1><p id="heroDesc">Xona yarating, do‘stlaringizni taklif qiling va YouTube videosini sinxron tomosha qiling.</p></section>
