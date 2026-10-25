@@ -17,13 +17,20 @@ socket.on('disconnect',()=>{
 });
 
 let activeRoomTab='video';
+const activityLabels={video:'Video tomosha',site:'Umumiy brauzer',games:'O‘yinlar',board:'Birgalikda chizish',files:'Fayllar',screen:'Ekran ulashish',call:'Ovoz/video suhbat',people:'Ishtirokchilar'};
 function setRoomTab(tab){
-  const allowed=new Set(['video','site','games','board','files','screen','call','people']);
+  const allowed=new Set(Object.keys(activityLabels));
   activeRoomTab=allowed.has(tab)?tab:'video';
   document.querySelectorAll('[data-room-tab]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.roomTab===activeRoomTab)));
   document.querySelectorAll('[data-room-section]').forEach(section=>{section.hidden=section.dataset.roomSection!==activeRoomTab});
+  document.querySelectorAll('[data-shared-activity]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.sharedActivity===activeRoomTab)));
+  const status=$('sharedActivityStatus');
+  if(status)status.textContent='Faol bo‘lim: '+activityLabels[activeRoomTab]+'. Boshqa faoliyat tanlansa, u barcha ishtirokchilarda ham ochiladi.';
   if(activeRoomTab==='board'&&typeof resizeWhiteboard==='function')resizeWhiteboard();
 }
+document.querySelectorAll('[data-shared-activity]').forEach(button=>button.addEventListener('click',()=>{
+  if(roomId)socket.emit('activity:launch',{activity:button.dataset.sharedActivity});
+}));
 document.querySelectorAll('[data-room-tab]').forEach(button=>button.addEventListener('click',()=>setRoomTab(button.dataset.roomTab)));
 setRoomTab('video');
 
@@ -42,7 +49,7 @@ $('joinRoom').onclick=()=>{
 $('roomInput').oninput=e=>e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
 socket.on('room:error',m=>{$('entryError').textContent=m;$('videoError').textContent=m;$('fileShareStatus').textContent=m});
 socket.on('room:joined',d=>{
-  roomId=d.roomId;isHost=d.isHost;setRoomTab('video');setSection('watch');$('publicRoomsPanel').classList.add('hidden');$('activityHub').classList.add('hidden');renderGame(d.game);applyRoomSettings(d.title||'Tomosha xonasi',d.theme||'violet',isHost,d.isPublic);siteUrl=d.siteUrl||null;siteExpanded=Boolean(d.siteExpanded);screenOwner=d.screenOwner||null;renderSharedSite(siteUrl,siteExpanded);
+  roomId=d.roomId;isHost=d.isHost;setRoomTab(d.activeActivity||'video');setGameMode(d.activeGame||'tictactoe');setSection('watch');$('publicRoomsPanel').classList.add('hidden');$('activityHub').classList.add('hidden');renderGame(d.game);applyRoomSettings(d.title||'Tomosha xonasi',d.theme||'violet',isHost,d.isPublic);siteUrl=d.siteUrl||null;siteExpanded=Boolean(d.siteExpanded);screenOwner=d.screenOwner||null;renderSharedSite(siteUrl,siteExpanded);
   $('entry').classList.add('hidden');$('how').classList.add('hidden');$('workspace').classList.remove('hidden');
   $('roomCode').textContent=roomId;$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
   $('loadVideo').disabled=false;$('youtubeUrl').disabled=false;$('mediaType').disabled=false;$('screenShare').disabled=!!screenOwner&&screenOwner!==socket.id;$('chat').replaceChildren();
@@ -51,6 +58,7 @@ socket.on('room:joined',d=>{
   renderQueue(d.queue||[]);
   (d.chatHistory||[]).forEach(renderChatMessage);
   if(d.state&&(d.state.mediaType||d.state.videoId))loadMedia(normalizeState(d.state),d.state);
+  renderGame(d.game);renderConnectFour(d.connectFour);
   if(screenStream){screenOwner=socket.id;socket.emit('screen:started');}
   if(callStream){callReady.clear();callReady.add(socket.id);socket.emit('rtc:ready',{ready:true});}
 });
@@ -73,6 +81,7 @@ socket.on('room:people',list=>{
 function system(t){const e=document.createElement('div');e.className='system';e.textContent=t;$('chat').append(e);scroll()}
 function scroll(){$('chat').scrollTop=$('chat').scrollHeight}
 socket.on('room:system',system);
+socket.on('activity:launched',d=>{if(!d||!d.activity)return;setRoomTab(d.activity);const status=$('sharedActivityStatus');if(status)status.textContent=(d.by||'Ishtirokchi')+' «'+(activityLabels[d.activity]||'Faoliyat')+'» bo‘limini hamma uchun ochdi.';});
 function renderChatMessage(m){
   const e=document.createElement('div');e.className='message';
   const header=document.createElement('div');header.className='message-header';
@@ -236,17 +245,45 @@ $('leaveRoom').onclick=()=>{
 };
 
 let gameState={board:Array(9).fill(null),turn:'X',winner:null,moves:0};
+let connectFourState={board:Array.from({length:6},()=>Array(7).fill(null)),turn:'R',winner:null,moves:0};
+let activeGame='tictactoe';
+function setGameMode(mode,notify=false){
+  activeGame=mode==='connect4'?'connect4':'tictactoe';
+  document.querySelectorAll('[data-game-mode]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.gameMode===activeGame)));
+  $('gameBoard').classList.toggle('hidden',activeGame!=='tictactoe');
+  $('connect4Panel').classList.toggle('hidden',activeGame!=='connect4');
+  $('gameStatus').classList.toggle('hidden',activeGame!=='tictactoe');
+  $('resetGame').textContent=activeGame==='connect4'?'Qayta boshlash':'Qayta boshlash';
+  if(notify&&roomId)socket.emit('game:select',{mode:activeGame});
+  if(activeGame==='connect4')renderConnectFour(connectFourState);else renderGame(gameState);
+}
+document.querySelectorAll('[data-game-mode]').forEach(button=>button.addEventListener('click',()=>setGameMode(button.dataset.gameMode,true)));
 function renderGame(state){
   if(state&&Array.isArray(state.board)&&state.board.length===9)gameState={board:state.board.slice(),turn:state.turn==='O'?'O':'X',winner:state.winner||null,moves:Number(state.moves)||0};
   document.querySelectorAll('[data-game-cell]').forEach((cell,i)=>{const mark=gameState.board[i]||'';cell.textContent=mark;cell.dataset.mark=mark;cell.disabled=!roomId||Boolean(gameState.winner)||Boolean(mark)});
   const status=$('gameStatus');if(!status)return;
   status.textContent=gameState.winner==='draw'?'Durrang! Qayta boshlang.':gameState.winner?gameState.winner+' g‘olib bo‘ldi!':roomId?'Navbat: '+gameState.turn+' · Istalgan ishtirokchi yurish qilishi mumkin.':'Xonaga kirgach o‘yin boshlanadi.';
 }
+function renderConnectFour(state){
+  if(state&&Array.isArray(state.board)&&state.board.length===6&&state.board.every(row=>Array.isArray(row)&&row.length===7))connectFourState={board:state.board.map(row=>row.slice()),turn:state.turn==='Y'?'Y':'R',winner:state.winner||null,moves:Number(state.moves)||0};
+  const board=$('connect4Board'),drops=$('connect4DropRow');if(!board||!drops)return;
+  board.replaceChildren();drops.replaceChildren();
+  for(let col=0;col<7;col++){
+    const drop=document.createElement('button');drop.type='button';drop.className='btn connect4-drop';drop.textContent='↓';drop.setAttribute('aria-label','Ustun '+(col+1)+' ga tashlash');drop.disabled=!roomId||Boolean(connectFourState.winner)||connectFourState.board[0][col]!==null;drop.addEventListener('click',()=>{if(roomId)socket.emit('connect4:move',{column:col})});drops.append(drop);
+    for(let row=0;row<6;row++){
+      const cell=document.createElement('button');cell.type='button';cell.className='connect4-cell';const mark=connectFourState.board[row][col];cell.dataset.mark=mark||'';cell.setAttribute('aria-label','Qator '+(row+1)+', ustun '+(col+1)+(mark?' '+(mark==='R'?'qizil':'sariq'):' bo‘sh'));cell.disabled=!roomId||Boolean(connectFourState.winner)||connectFourState.board[0][col]!==null;cell.addEventListener('click',()=>{if(roomId)socket.emit('connect4:move',{column:col})});board.append(cell);
+    }
+  }
+  const status=$('connect4Status');status.textContent=connectFourState.winner==='draw'?'Durrang! Qayta boshlang.':connectFourState.winner?((connectFourState.winner==='R'?'Qizil':'Sariq')+' g‘olib bo‘ldi!'):roomId?('Navbat: '+(connectFourState.turn==='R'?'Qizil':'Sariq')+' · Bir ustunni tanlang.'):'Xonaga kirgach o‘yin boshlanadi.';
+}
 document.querySelectorAll('[data-game-cell]').forEach(cell=>cell.addEventListener('click',()=>{if(roomId)socket.emit('game:move',{index:Number(cell.dataset.gameCell)})}));
-$('resetGame').addEventListener('click',()=>{if(roomId)socket.emit('game:reset')});
+$('resetGame').addEventListener('click',()=>{if(roomId)socket.emit(activeGame==='connect4'?'connect4:reset':'game:reset')});
 socket.on('game:state',state=>renderGame(state));
 socket.on('game:error',message=>{$('gameStatus').textContent=message});
-renderGame(gameState);
+socket.on('connect4:state',state=>renderConnectFour(state));
+socket.on('connect4:error',message=>{$('connect4Status').textContent=message});
+socket.on('game:mode',d=>{if(d&&d.mode)setGameMode(d.mode,false)});
+renderGame(gameState);renderConnectFour(connectFourState);setGameMode('tictactoe');
 
 
 async function refreshPublicRooms(){
@@ -389,15 +426,16 @@ function parseMedia(raw){
     if(host==='youtu.be')id=u.pathname.split('/').filter(Boolean)[0]||null;
     else if(host==='youtube.com'||host.endsWith('.youtube.com')){
       if(u.pathname==='/watch')id=u.searchParams.get('v');
-      else if(u.pathname.startsWith('/embed/')||u.pathname.startsWith('/shorts/'))id=u.pathname.split('/')[2]||null;
+      else if(u.pathname.startsWith('/embed/')||u.pathname.startsWith('/shorts/')||u.pathname.startsWith('/live/'))id=u.pathname.split('/')[2]||null;
     }
     const requested=$('mediaType').value;
     if(id&&/^[A-Za-z0-9_-]{11}$/.test(id)&&(requested==='auto'||requested==='youtube'))return{mediaType:'youtube',mediaId:id,mediaUrl:'https://www.youtube.com/watch?v='+id,videoId:id};
     if((host==='vimeo.com'||host==='player.vimeo.com')&&($('mediaType').value==='auto'||$('mediaType').value==='vimeo')){
       const parts=u.pathname.split('/').filter(Boolean);id=parts.find(x=>/^\d{1,15}$/.test(x))||null;
-      if(id)return{mediaType:'vimeo',mediaId:id,mediaUrl:'https://player.vimeo.com/video/'+id,videoId:null};
+      const idIndex=parts.indexOf(id),pathHash=idIndex>=0?parts[idIndex+1]:null,hash=u.searchParams.get('h')||(pathHash&&/^[A-Za-z0-9]+$/.test(pathHash)?pathHash:null);
+      if(id)return{mediaType:'vimeo',mediaId:id,mediaUrl:'https://player.vimeo.com/video/'+id+(hash?'?h='+encodeURIComponent(hash):''),videoId:null};
     }
-    if(($('mediaType').value==='auto'||$('mediaType').value==='file')&&/\.(mp4|webm)$/i.test(u.pathname))return{mediaType:'file',mediaId:u.href,mediaUrl:u.href,videoId:null};
+    if(($('mediaType').value==='auto'&&/\.(mp4|webm)$/i.test(u.pathname))||$('mediaType').value==='file')return{mediaType:'file',mediaId:u.href,mediaUrl:u.href,videoId:null};
     if(($('mediaType').value==='auto'||$('mediaType').value==='hls')&&/\.m3u8$/i.test(u.pathname))return{mediaType:'hls',mediaId:u.href,mediaUrl:u.href,videoId:null};
     return null;
   }catch(e){return null}
@@ -435,10 +473,11 @@ function loadMedia(next,state){
     player=new YT.Player('ytPlayer',{videoId:next.mediaId,playerVars:{playsinline:1,rel:0,controls:0,disablekb:1,origin:location.origin},events:{
       onReady:()=>markReady(state),
       onStateChange:e=>{if(remote||Date.now()<remoteUntil)return;if(e.data===YT.PlayerState.ENDED){if(isHost)socket.emit('queue:next');return}if(e.data===YT.PlayerState.PLAYING||e.data===YT.PlayerState.PAUSED)emitPlayback(e.data===YT.PlayerState.PLAYING,getTime())},
+      onAutoplayBlocked:()=>{$('videoError').textContent='Brauzer avtomatik ijroni blokladi. Videoni Play tugmasi bilan qo‘lda boshlang.';$('playState').textContent='Play tugmasini bosing'},
       onError:()=>{$('videoError').textContent='YouTube videosini ochib bo‘lmadi.'}
     }});
   }else if(next.mediaType==='vimeo'){
-    const frame=document.createElement('iframe');frame.id='vimeoPlayer';frame.src=next.mediaUrl+'?controls=0&title=0&byline=0&portrait=0';frame.allow='autoplay; fullscreen; picture-in-picture';frame.allowFullscreen=true;frame.title='Vimeo video';$('player').append(frame);
+    const frame=document.createElement('iframe');frame.id='vimeoPlayer';const vimeoUrl=new URL(next.mediaUrl);vimeoUrl.searchParams.set('controls','0');vimeoUrl.searchParams.set('title','0');vimeoUrl.searchParams.set('byline','0');vimeoUrl.searchParams.set('portrait','0');frame.src=vimeoUrl.href;frame.allow='autoplay; fullscreen; picture-in-picture';frame.allowFullscreen=true;frame.title='Vimeo video';$('player').append(frame);
     const init=()=>{if(!window.Vimeo||!window.Vimeo.Player){setTimeout(init,150);return}
       player=new Vimeo.Player(frame);
       player.ready().then(()=>markReady(state)).catch(()=>{$('videoError').textContent='Vimeo videosini ochib bo‘lmadi yoki video maxfiy.'});
@@ -547,7 +586,7 @@ async function seekTo(t){
   const v=Math.max(0,Number(t)||0);
   try{if(media.mediaType==='youtube')player.seekTo(v,true);else if(media.mediaType==='file'||media.mediaType==='hls')player.currentTime=v;else if(media.mediaType==='vimeo')await player.setCurrentTime(v)}catch(e){}
 }
-async function play(){if(!player||!playerReady)return;try{if(media.mediaType==='youtube')player.playVideo();else await player.play()}catch(e){$('videoError').textContent='Ijro etish uchun videoni sahifada ishga tushiring.'}}
+async function play(){if(!player||!playerReady)return false;try{if(media.mediaType==='youtube'){player.playVideo();return true}await player.play();return true}catch(e){$('videoError').textContent='Avtomatik ijro bloklandi. Videoni o‘zingiz Play tugmasi bilan boshlang; keyin holat xona bilan sinxronlanadi.';return false}}
 async function pause(){if(!player||!playerReady)return;try{if(media.mediaType==='youtube')player.pauseVideo();else await player.pause()}catch(e){}}
 async function applyState(s){
   if(!playerReady||!player||!s)return;
@@ -558,8 +597,7 @@ async function applyState(s){
   try{
     const current=await getTimeAsync();
     if(Math.abs(current-t)>2)await seekTo(t);
-    if(s.isPlaying)await play();else await pause();
-    $('playState').textContent=s.isPlaying?'▶ Ijro etilmoqda':'Ⅱ Pauza';
+    if(s.isPlaying){const started=await play();$('playState').textContent=started?'▶ Ijro etilmoqda':'▶ Play tugmasini bosing';if(!started)$('videoError').textContent='Brauzer avtomatik ijroni blokladi. Videoni bir marta qo‘lda ishga tushiring.';}else{await pause();$('playState').textContent='Ⅱ Pauza';}
   }catch(e){}
   setTimeout(()=>{remote=false},1300);
 }
@@ -610,8 +648,7 @@ socket.on('video:state',s=>{const next=normalizeState(s);if(next&&(!media||next.
 $('playPause').onclick=async()=>{
   if(!playerReady)return;
   const playing=await isPlaying(),t=await getTimeAsync();
-  if(playing)await pause();else await play();
-  emitPlayback(!playing,t);
+  if(playing){await pause();emitPlayback(false,t)}else{const started=await play();if(started)emitPlayback(true,t)}
 };
 async function seek(d){
   if(!playerReady)return;
@@ -651,9 +688,11 @@ function createPeer(peerId,initiator){
   pc.onicecandidate=e=>{if(e.candidate&&roomId)socket.emit('rtc:ice',{to:peerId,kind:'screen',candidate:e.candidate})};
   pc.ontrack=e=>{
     if(e.streams&&e.streams[0]){
+      $('sharedScreen').muted=false;
       $('sharedScreen').srcObject=e.streams[0];
       $('sharedScreenWrap').classList.remove('hidden');
-      $('screenStatus').textContent='Xona egasining ekrani uzatilmoqda.';
+      $('screenStatus').textContent='Xona egasining ekrani uzatilmoqda. Ovoz chiqmasa, video ustiga bosing va ovozni yoqing.';
+      const playback=$('sharedScreen').play();if(playback&&playback.catch)playback.catch(()=>{$('screenStatus').textContent='Ekran ulandi. Brauzer avtomatik ijroni blokladi — videoni bosing, keyin ovozni yoqing.'});
     }
   };
   pc.onconnectionstatechange=()=>{
@@ -832,12 +871,13 @@ $('screenShare').onclick=async()=>{
   }
   try{
     screenStream=await navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
+    $('sharedScreen').muted=true;
     $('sharedScreen').srcObject=screenStream;
     $('sharedScreenWrap').classList.remove('hidden');
     $('screenShare').classList.add('hidden');
     $('stopScreenShare').classList.remove('hidden');
     screenOwner=socket.id;socket.emit('screen:started');
-    $('screenStatus').textContent='Ekraningiz ulashilmoqda. Telefonda ilova almashganda uzatish to‘xtashi mumkin; audio va himoyalangan videolar qurilma/servis cheklovlariga bog‘liq.';
+    $('screenStatus').textContent=screenStream.getAudioTracks().length?'Ekran va audio uzatilmoqda. Agar ovoz eshitilmasa, ekran tanlash oynasida “Tab audiosi / Share audio”ni yoqing.':'Ekran uzatilyapti, lekin audio trek olinmadi. Ekran tanlash oynasida “Tab audiosi / Share audio”ni yoqing. DRM himoyasi ayrim videolarni bloklashi mumkin.';
     screenStream.getTracks().forEach(t=>t.addEventListener('ended',stopScreenShare,{once:true}));
     await syncScreenPeers();
   }catch(e){
