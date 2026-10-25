@@ -45,6 +45,18 @@ test('VK Video and OK links are parsed into platform embed players', () => {
   assert.match(server, /if \(type === 'ok'\)/);
 });
 
+test('playback speed control supports native, YouTube and Vimeo players', () => {
+  const html = read('public/index.html');
+  const app = read('public/app.js');
+  assert.match(html, /id="playbackRate"/);
+  assert.match(html, /value="0\.5"/);
+  assert.match(html, /value="2"/);
+  assert.match(app, /async function applyPlaybackRate\(\)/);
+  assert.match(app, /player\.setPlaybackRate\(rate\)/);
+  assert.match(app, /player\.playbackRate=rate/);
+  assert.match(app, /\$\('playbackRate'\)\.disabled=true/);
+});
+
 test('uploaded videos can be removed by the room host and disappear for everyone', () => {
   const server = read('server.js');
   const app = read('public/app.js');
