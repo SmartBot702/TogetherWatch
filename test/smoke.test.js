@@ -41,3 +41,91 @@ test('server exposes health, public rooms, RTC config, and shared activities', (
   }
   assert.ok(server.includes("socket.on('activity:launch'"), 'missing shared activity event');
 });
+
+
+test('two clients share a room, activity selection, and chat in realtime', async () => {
+  const os = require('node:os');
+  const net = require('node:net');
+  const { spawn } = require('node:child_process');
+  const { io: connect } = require('socket.io-client');
+
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'togetherwatch-test-'));
+  const port = await new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.once('error', reject);
+    probe.listen(0, '127.0.0.1', () => {
+      const chosen = probe.address().port;
+      probe.close(error => error ? reject(error) : resolve(chosen));
+    });
+  });
+  const child = spawn(process.execPath, ['server.js'], {
+    cwd: root,
+    env: { ...process.env, PORT: String(port), DATA_DIR: tempDir, DATABASE_URL: '', NODE_ENV: 'test' },
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  let output = '';
+  child.stdout.on('data', chunk => { output += chunk.toString(); });
+  child.stderr.on('data', chunk => { output += chunk.toString(); });
+  let host;
+  let guest;
+
+  const waitForEvent = (socket, event, timeout = 6000) => new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      socket.off(event, onEvent);
+      reject(new Error('Timed out waiting for ' + event + '. Server output: ' + output.slice(-1500)));
+    }, timeout);
+    const onEvent = data => { clearTimeout(timer); resolve(data); };
+    socket.once(event, onEvent);
+  });
+
+  try {
+    const deadline = Date.now() + 10000;
+    let healthy = false;
+    while (Date.now() < deadline) {
+      if (child.exitCode !== null) throw new Error('Server exited early: ' + output);
+      try {
+        const response = await fetch('http://127.0.0.1:' + port + '/health');
+        if (response.ok) { healthy = true; break; }
+      } catch (_) {}
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    assert.ok(healthy, 'server did not become healthy: ' + output.slice(-1500));
+
+    const url = 'http://127.0.0.1:' + port;
+    host = connect(url, { transports: ['websocket'], reconnection: false, timeout: 5000 });
+    guest = connect(url, { transports: ['websocket'], reconnection: false, timeout: 5000 });
+    await Promise.all([waitForEvent(host, 'connect'), waitForEvent(guest, 'connect')]);
+
+    const hostJoinedPromise = waitForEvent(host, 'room:joined');
+    host.emit('room:create', { name: 'HostTest', title: 'Realtime test room' });
+    const hostRoom = await hostJoinedPromise;
+    assert.match(hostRoom.roomId, /^[A-Z0-9]{6}$/);
+
+    const guestJoinedPromise = waitForEvent(guest, 'room:joined');
+    guest.emit('room:join', { roomId: hostRoom.roomId, name: 'GuestTest' });
+    const guestRoom = await guestJoinedPromise;
+    assert.equal(guestRoom.roomId, hostRoom.roomId);
+
+    const activityPromise = waitForEvent(guest, 'activity:launched');
+    host.emit('activity:launch', { activity: 'board' });
+    const activity = await activityPromise;
+    assert.equal(activity.activity, 'board');
+
+    const chatPromise = waitForEvent(guest, 'chat:message');
+    host.emit('chat:send', { text: 'integration-test-message' });
+    const message = await chatPromise;
+    assert.equal(message.text, 'integration-test-message');
+    assert.equal(message.name, 'HostTest');
+  } finally {
+    if (host) host.disconnect();
+    if (guest) guest.disconnect();
+    if (child.exitCode === null) {
+      child.kill('SIGTERM');
+      await new Promise(resolve => {
+        const timer = setTimeout(() => { child.kill('SIGKILL'); resolve(); }, 2500);
+        child.once('exit', () => { clearTimeout(timer); resolve(); });
+      });
+    }
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
