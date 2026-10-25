@@ -195,7 +195,7 @@ function normalizeMedia(p) {
   }
   if (type === 'local') {
     const id = String(p.mediaId || '');
-    if (!/^local-[a-f0-9]{8}$/.test(id)) return null;
+    if (!/^local-[a-f0-9]{16}$/.test(id)) return null;
     return { mediaType: 'local', mediaId: id, mediaUrl: 'local://' + id, videoId: null };
   }
   if (type === 'file' || type === 'hls') {
