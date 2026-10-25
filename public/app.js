@@ -3,7 +3,7 @@ const $=id=>document.getElementById(id);
 const socket=io();
 let rtcIceServers=[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun.cloudflare.com:3478'}];
 fetch('/api/rtc-config',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(c=>{if(c&&Array.isArray(c.iceServers)&&c.iceServers.length)rtcIceServers=c.iceServers}).catch(()=>{});
-let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null,callStream=null,siteUrl=null,siteExpanded=false,screenOwner=null,hlsInstance=null,queueItems=[],volume=1,muted=false,seekDuration=0,seeking=false,localFile=null,localFileId=null,localObjectUrl=null,subtitleObjectUrl=null,subtitleTrack=null,subtitleVttText=null,subtitleFileName=null,pendingSharedSubtitle=null,latestPlaybackState=null,endedQueueAdvanceKey=null;const peers=new Map(),callPeers=new Map(),callReady=new Set(),pendingScreenIce=new Map(),pendingCallIce=new Map();
+let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null,callStream=null,siteUrl=null,siteExpanded=false,screenOwner=null,hlsInstance=null,queueItems=[],volume=1,muted=false,seekDuration=0,seeking=false,localFile=null,localFileId=null,localObjectUrl=null,subtitleObjectUrl=null,subtitleTrack=null,subtitleVttText=null,subtitleFileName=null,pendingSharedSubtitle=null,latestPlaybackState=null,endedQueueAdvanceKey=null;const peers=new Map(),callPeers=new Map(),callReady=new Set(),pendingScreenIce=new Map(),pendingCallIce=new Map(),callDisconnectTimers=new Map();
 
 socket.on('connect',()=>{
   $('connection').textContent='● Serverga ulandi';
@@ -984,8 +984,35 @@ function callPeer(peerId,initiator){
     }
     video.srcObject=e.streams[0];video.play().catch(()=>{});
   };
-  pc.onconnectionstatechange=()=>{if(['failed','closed'].includes(pc.connectionState))removeCallPeer(peerId)};
+  pc.onconnectionstatechange=()=>{
+    if(pc.connectionState==='connected'){
+      const timer=callDisconnectTimers.get(peerId);
+      if(timer){clearTimeout(timer);callDisconnectTimers.delete(peerId)}
+      return;
+    }
+    if(pc.connectionState==='disconnected'){
+      if(!callDisconnectTimers.has(peerId)){
+        const timer=setTimeout(()=>{
+          callDisconnectTimers.delete(peerId);
+          if(callPeers.get(peerId)!==pc||pc.connectionState==='connected')return;
+          removeCallPeer(peerId);
+          scheduleCallPeerRetry(peerId);
+        },5000);
+        callDisconnectTimers.set(peerId,timer);
+      }
+      return;
+    }
+    if(pc.connectionState==='failed'){
+      removeCallPeer(peerId);
+      scheduleCallPeerRetry(peerId);
+    }
+  };
   return pc;
+}
+function scheduleCallPeerRetry(peerId){
+  // Only the designated offerer retries, avoiding simultaneous competing offers.
+  if(!callStream||!socket.connected||!callReady.has(peerId)||socket.id.localeCompare(peerId)<=0)return;
+  setTimeout(()=>{if(callStream&&socket.connected&&callReady.has(peerId)&&!callPeers.has(peerId))syncCallPeers()},1200);
 }
 async function syncCallPeers(){
   if(!callStream||!roomId)return;
@@ -1011,6 +1038,7 @@ async function answerCallOffer(p){
   }catch(e){removeCallPeer(p.from);$('callStatus').textContent='Qo‘ng‘iroqqa ulanishda xatolik yuz berdi.'}
 }
 function removeCallPeer(peerId){
+  const timer=callDisconnectTimers.get(peerId);if(timer){clearTimeout(timer);callDisconnectTimers.delete(peerId)}
   const pc=callPeers.get(peerId);if(pc){try{pc.close()}catch(e){}callPeers.delete(peerId)}
   pendingCallIce.delete(peerId);
   const video=document.getElementById('call-'+peerId);if(video&&video.parentElement)video.parentElement.remove();
