@@ -162,8 +162,6 @@ app.get('/api/extract', async (req, res) => {
 });
 
 
-const QUIZ_QUESTIONS = [{"q":"O‘zbekiston poytaxti qaysi shahar?","a":["Samarqand","Toshkent","Buxoro","Xiva"],"correct":1},{"q":"Quyosh tizimidagi eng katta sayyora qaysi?","a":["Yer","Mars","Yupiter","Venera"],"correct":2},{"q":"Bir soatda necha daqiqa bor?","a":["30","60","90","100"],"correct":1},{"q":"Suvning kimyoviy formulasi qaysi?","a":["CO₂","O₂","H₂O","NaCl"],"correct":2},{"q":"Qaysi hayvon sutemizuvchi hisoblanadi?","a":["Akula","Delfin","Timsoh","Pingvin"],"correct":1},{"q":"Yerning tabiiy yo‘ldoshi nima?","a":["Quyosh","Oy","Mars","Venera"],"correct":1},{"q":"Dunyodagi eng katta okean qaysi?","a":["Atlantika","Hind","Shimoliy Muz","Tinch"],"correct":3},{"q":"Haftada necha kun bor?","a":["5","6","7","8"],"correct":2}];
-function emptyQuiz() { return { index: 0, scores: {}, answered: [], finished: false, lastCorrect: null }; }
 function makeCode() {
   for (const [id, room] of rooms) {
     if (!room.members.size && room.emptyAt && Date.now() - room.emptyAt > 6 * 60 * 60 * 1000) discardRoom(id);
@@ -237,7 +235,7 @@ function enter(socket, id, name, create, options = {}) {
   if (!name) return error(socket, 'Ismingizni kiriting.');
   let r = rooms.get(id);
   if (r && !r.members.size && r.emptyAt && Date.now() - r.emptyAt > 6 * 60 * 60 * 1000) { discardRoom(id); r = null; }
-  if (!r && create) { r = { id, hostId: socket.id, members: new Map(), callReady: new Set(), state: emptyState(), queue: [], messages: [], siteUrl: null, siteExpanded: false, screenOwner: null, browserSession: null, activeActivity: 'video', quiz: emptyQuiz(), title: cleanRoomTitle(options.title) || 'Tomosha xonasi', theme: cleanRoomTheme(options.theme), isPublic: Boolean(options.isPublic), game: { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 }, activeGame: 'tictactoe', connectFour: { board: Array.from({length:6},()=>Array(7).fill(null)), turn: 'R', winner: null, moves: 0 }, boardStrokes: [] }; rooms.set(id, r); }
+  if (!r && create) { r = { id, hostId: socket.id, members: new Map(), callReady: new Set(), state: emptyState(), queue: [], messages: [], siteUrl: null, siteExpanded: false, screenOwner: null, browserSession: null, activeActivity: 'video', title: cleanRoomTitle(options.title) || 'Tomosha xonasi', theme: cleanRoomTheme(options.theme), isPublic: Boolean(options.isPublic), game: { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 }, activeGame: 'tictactoe', connectFour: { board: Array.from({length:6},()=>Array(7).fill(null)), turn: 'R', winner: null, moves: 0 }, boardStrokes: [] }; rooms.set(id, r); }
   if (!r.title) r.title = 'Tomosha xonasi';
   if (!r.theme) r.theme = 'violet';
   if (r && !Array.isArray(r.messages)) r.messages = [];
@@ -250,7 +248,7 @@ function enter(socket, id, name, create, options = {}) {
   socket.data.roomId = id;
   socket.data.name = name;
   r.members.set(socket.id, { id: socket.id, name });
-  socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, title: r.title, theme: r.theme, state: r.state, queue: r.queue || [], chatHistory: r.messages.slice(-100), siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner, isPublic: Boolean(r.isPublic), activeActivity: r.activeActivity || 'video', activeGame: r.activeGame || 'tictactoe', game: r.game || { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 }, connectFour: r.connectFour || { board: Array.from({length:6},()=>Array(7).fill(null)), turn: 'R', winner: null, moves: 0 }, quiz: r.quiz || emptyQuiz() });
+  socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, title: r.title, theme: r.theme, state: r.state, queue: r.queue || [], chatHistory: r.messages.slice(-100), siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner, isPublic: Boolean(r.isPublic), activeActivity: r.activeActivity || 'video', activeGame: r.activeGame || 'tictactoe', game: r.game || { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 }, connectFour: r.connectFour || { board: Array.from({length:6},()=>Array(7).fill(null)), turn: 'R', winner: null, moves: 0 } });
   for (const file of (r.files || [])) socket.emit('file:shared', file);
   for (const link of (r.links || [])) socket.emit('link:shared', link);
   socket.emit('board:history', Array.isArray(r.boardStrokes) ? r.boardStrokes.slice(-2000) : []);
@@ -486,38 +484,10 @@ io.on('connection', socket => {
   });
   socket.on('game:select', p => {
     const id = socket.data.roomId, r = rooms.get(id);
-    const mode = p && ['connect4','tictactoe','quiz'].includes(p.mode) ? p.mode : null;
+    const mode = p && p.mode === 'connect4' ? 'connect4' : p && p.mode === 'tictactoe' ? 'tictactoe' : null;
     if (!r || !r.members.has(socket.id) || !mode) return;
     r.activeGame = mode;
     io.to(id).emit('game:mode', { mode, by: socket.data.name });
-    persistRoom(r);
-  });
-  socket.on('quiz:answer', p => {
-    const id = socket.data.roomId, r = rooms.get(id);
-    if (!r || !r.members.has(socket.id) || !p || !Number.isInteger(p.answer) || p.answer < 0 || p.answer > 3) return;
-    if (!r.quiz) r.quiz = emptyQuiz();
-    const q = r.quiz;
-    if (q.finished || !QUIZ_QUESTIONS[q.index]) return socket.emit('quiz:error', 'Viktorina tugagan. Qayta boshlang.');
-    if (q.answered.includes(socket.id)) return socket.emit('quiz:error', 'Bu savolga javob berib bo‘lgansiz.');
-    const correct = p.answer === QUIZ_QUESTIONS[q.index].correct;
-    const name = socket.data.name || 'Ishtirokchi';
-    if (correct) q.scores[name] = (q.scores[name] || 0) + 1;
-    q.answered.push(socket.id);
-    const answeredCount = q.answered.length;
-    q.lastCorrect = answeredCount >= r.members.size ? QUIZ_QUESTIONS[q.index].correct : null;
-    if (answeredCount >= r.members.size) {
-      q.index++;
-      q.answered = [];
-      if (q.index >= QUIZ_QUESTIONS.length) q.finished = true;
-    }
-    io.to(id).emit('quiz:state', { ...q, questionCount: QUIZ_QUESTIONS.length, answeredCount: q.answered.length, lastCorrect: q.lastCorrect });
-    persistRoom(r);
-  });
-  socket.on('quiz:reset', () => {
-    const id = socket.data.roomId, r = rooms.get(id);
-    if (!r || !r.members.has(socket.id)) return;
-    r.quiz = emptyQuiz();
-    io.to(id).emit('quiz:state', { ...r.quiz, questionCount: QUIZ_QUESTIONS.length, answeredCount: 0 });
     persistRoom(r);
   });
   socket.on('connect4:move', p => {
@@ -751,8 +721,8 @@ auth.attach(app, io).then(async () => {
       id: saved.id, hostId: null, members: new Map(), callReady: new Set(),
       state: payload.state || emptyState(), queue: Array.isArray(payload.queue) ? payload.queue : [],
       game: payload.game && Array.isArray(payload.game.board) && payload.game.board.length === 9 ? payload.game : { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 },
-      activeGame: ['connect4','quiz'].includes(payload.activeGame) ? payload.activeGame : 'tictactoe',
-      connectFour: payload.connectFour && Array.isArray(payload.connectFour.board) && payload.connectFour.board.length === 6 ? payload.connectFour : { board: Array.from({length:6},()=>Array(7).fill(null)), turn: 'R', winner: null, moves: 0 }, quiz: payload.quiz || emptyQuiz(),
+      activeGame: payload.activeGame === 'connect4' ? 'connect4' : 'tictactoe',
+      connectFour: payload.connectFour && Array.isArray(payload.connectFour.board) && payload.connectFour.board.length === 6 ? payload.connectFour : { board: Array.from({length:6},()=>Array(7).fill(null)), turn: 'R', winner: null, moves: 0 },
       messages: Array.isArray(payload.messages) ? payload.messages.slice(-100) : [],
       siteUrl: payload.siteUrl || null, siteExpanded: Boolean(payload.siteExpanded),
       title: typeof payload.title === 'string' ? payload.title : 'Tomosha xonasi', theme: cleanRoomTheme(payload.theme),
