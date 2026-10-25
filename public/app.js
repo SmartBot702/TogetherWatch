@@ -18,7 +18,7 @@ socket.on('disconnect',()=>{
 
 let activeRoomTab='video';
 function setRoomTab(tab){
-  const allowed=new Set(['video','site','games','files','screen','call','people']);
+  const allowed=new Set(['video','site','games','board','files','screen','call','people']);
   activeRoomTab=allowed.has(tab)?tab:'video';
   document.querySelectorAll('[data-room-tab]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.roomTab===activeRoomTab)));
   document.querySelectorAll('[data-room-section]').forEach(section=>{section.hidden=section.dataset.roomSection!==activeRoomTab});
@@ -173,7 +173,7 @@ $('leaveRoom').onclick=()=>{
   for(const id of Array.from(peers.keys()))removePeer(id);
   for(const id of Array.from(callPeers.keys()))removeCallPeer(id);
   socket.emit('room:leave');destroyPlayer();roomId=null;history.replaceState({},'',location.pathname);
-  renderGame({board:Array(9).fill(null),turn:'X',winner:null,moves:0});setRoomTab('video');sharedFileIds.clear();sharedLinkIds.clear();$('sharedLinksList').replaceChildren();$('sharedFilesList').replaceChildren();for(const [id,msg] of [['sharedLinksList','Hozircha havola yo‘q.'],['sharedFilesList','Hozircha fayl yo‘q.']]){const empty=document.createElement('div');empty.className='muted small';empty.textContent=msg;$(id).append(empty)}$('fileShareStatus').textContent='Bir fayl 450 KB gacha. Fayllar joriy xonada vaqtincha saqlanadi.';$('roomFileInput').value='';setSection(activeSection);refreshPublicRooms();document.body.dataset.roomTheme='violet';
+  renderGame({board:Array(9).fill(null),turn:'X',winner:null,moves:0});setRoomTab('video');boardStrokes=[];resizeWhiteboard();sharedFileIds.clear();sharedLinkIds.clear();$('sharedLinksList').replaceChildren();$('sharedFilesList').replaceChildren();for(const [id,msg] of [['sharedLinksList','Hozircha havola yo‘q.'],['sharedFilesList','Hozircha fayl yo‘q.']]){const empty=document.createElement('div');empty.className='muted small';empty.textContent=msg;$(id).append(empty)}$('fileShareStatus').textContent='Bir fayl 450 KB gacha. Fayllar joriy xonada vaqtincha saqlanadi.';$('roomFileInput').value='';setSection(activeSection);refreshPublicRooms();document.body.dataset.roomTheme='violet';
 };
 
 let gameState={board:Array(9).fill(null),turn:'X',winner:null,moves:0};
@@ -221,6 +221,46 @@ document.querySelectorAll('[data-launch]').forEach(button=>button.addEventListen
 }));
 
 
+
+
+const whiteboard=$('whiteboardCanvas'),boardCtx=whiteboard.getContext('2d');
+let boardStrokes=[],boardDrawing=false,lastBoardPoint=null;
+function resizeWhiteboard(){
+  if(!whiteboard||!boardCtx)return;
+  const rect=whiteboard.getBoundingClientRect(),ratio=window.devicePixelRatio||1;
+  if(!rect.width||!rect.height)return;
+  whiteboard.width=Math.round(rect.width*ratio);whiteboard.height=Math.round(rect.height*ratio);
+  boardCtx.setTransform(ratio,0,0,ratio,0,0);
+  boardCtx.clearRect(0,0,rect.width,rect.height);
+  boardStrokes.forEach(drawBoardStroke);
+}
+function drawBoardStroke(stroke){
+  if(!boardCtx||!whiteboard)return;
+  const rect=whiteboard.getBoundingClientRect();if(!rect.width||!rect.height)return;
+  boardCtx.strokeStyle=stroke.color;boardCtx.lineWidth=Number(stroke.width)||4;boardCtx.lineCap='round';boardCtx.lineJoin='round';
+  boardCtx.beginPath();boardCtx.moveTo(stroke.x0*rect.width,stroke.y0*rect.height);boardCtx.lineTo(stroke.x1*rect.width,stroke.y1*rect.height);boardCtx.stroke();
+}
+function boardPoint(event){const rect=whiteboard.getBoundingClientRect();return{x:Math.max(0,Math.min(1,(event.clientX-rect.left)/rect.width)),y:Math.max(0,Math.min(1,(event.clientY-rect.top)/rect.height))}}
+whiteboard.addEventListener('pointerdown',event=>{
+  if(!roomId)return;
+  boardDrawing=true;whiteboard.setPointerCapture(event.pointerId);lastBoardPoint=boardPoint(event);
+  $('whiteboardStatus').textContent='Chizilmoqda…';
+});
+whiteboard.addEventListener('pointermove',event=>{
+  if(!boardDrawing||!lastBoardPoint||!roomId)return;
+  const point=boardPoint(event),stroke={x0:lastBoardPoint.x,y0:lastBoardPoint.y,x1:point.x,y1:point.y,color:$('boardColor').value,width:Number($('boardWidth').value)||4};
+  boardStrokes.push(stroke);if(boardStrokes.length>2000)boardStrokes.shift();drawBoardStroke(stroke);socket.emit('board:stroke',stroke);lastBoardPoint=point;
+});
+function stopBoardDraw(){boardDrawing=false;lastBoardPoint=null}
+whiteboard.addEventListener('pointerup',stopBoardDraw);whiteboard.addEventListener('pointercancel',stopBoardDraw);whiteboard.addEventListener('lostpointercapture',stopBoardDraw);
+socket.on('board:stroke',stroke=>{if(!stroke)return;boardStrokes.push(stroke);if(boardStrokes.length>2000)boardStrokes.shift();drawBoardStroke(stroke)});
+socket.on('board:history',strokes=>{boardStrokes=Array.isArray(strokes)?strokes.slice(-2000):[];resizeWhiteboard();$('whiteboardStatus').textContent=boardStrokes.length?'Saqlangan chiziqlar yuklandi.':'Chizish uchun barmoq yoki sichqonchadan foydalaning.'});
+socket.on('board:clear',()=>{boardStrokes=[];resizeWhiteboard();$('whiteboardStatus').textContent='Doska tozalandi.'});
+$('clearWhiteboard').addEventListener('click',()=>{if(roomId)socket.emit('board:clear')});
+$('boardUndo').addEventListener('click',()=>{$('whiteboardStatus').textContent='Oxirgi chiziqni bekor qilish hozircha faqat joriy foydalanuvchi qurilmasida qo‘llab-quvvatlanmaydi; doskani tozalash mumkin.'});
+window.addEventListener('resize',resizeWhiteboard);
+if('ResizeObserver'in window)new ResizeObserver(resizeWhiteboard).observe(whiteboard);
+resizeWhiteboard();
 
 const sharedLinkIds=new Set();
 function renderSharedLink(link){
