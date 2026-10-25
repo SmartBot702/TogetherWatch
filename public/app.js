@@ -1,7 +1,7 @@
 (function(){
 const $=id=>document.getElementById(id);
 const socket=io();
-let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null,callStream=null,siteUrl=null,siteExpanded=false,screenOwner=null;const peers=new Map(),callPeers=new Map(),callReady=new Set(),pendingScreenIce=new Map(),pendingCallIce=new Map();
+let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null,callStream=null,siteUrl=null,siteExpanded=false,screenOwner=null,hlsInstance=null;const peers=new Map(),callPeers=new Map(),callReady=new Set(),pendingScreenIce=new Map(),pendingCallIce=new Map();
 
 socket.on('connect',()=>{$('connection').textContent='● Serverga ulandi'});
 socket.on('disconnect',()=>{$('connection').textContent='● Aloqa uzildi'});
@@ -101,6 +101,7 @@ function parseMedia(raw){
       if(id)return{mediaType:'vimeo',mediaId:id,mediaUrl:'https://player.vimeo.com/video/'+id,videoId:null};
     }
     if(($('mediaType').value==='auto'||$('mediaType').value==='file')&&/\.(mp4|webm)$/i.test(u.pathname))return{mediaType:'file',mediaId:u.href,mediaUrl:u.href,videoId:null};
+    if(($('mediaType').value==='auto'||$('mediaType').value==='hls')&&/\.m3u8$/i.test(u.pathname))return{mediaType:'hls',mediaId:u.href,mediaUrl:u.href,videoId:null};
     return null;
   }catch(e){return null}
 }
@@ -110,6 +111,7 @@ function normalizeState(s){
   return null;
 }
 function destroyPlayer(){
+  if(hlsInstance){try{hlsInstance.destroy()}catch(e){}hlsInstance=null}
   if(player){
     try{if(media&&media.mediaType==='youtube'&&player.destroy)player.destroy();else if(media&&media.mediaType==='vimeo'&&player.destroy)player.destroy();else if(media&&media.mediaType==='file'){player.pause();player.removeAttribute('src');player.load()}}catch(e){}
   }
@@ -144,10 +146,15 @@ function loadMedia(next,state){
       player.on('play',()=>{if(!remote&&Date.now()>=remoteUntil&&isHost)getTimeAsync().then(t=>emitPlayback(true,t))});
       player.on('pause',()=>{if(!remote&&Date.now()>=remoteUntil&&isHost)getTimeAsync().then(t=>emitPlayback(false,t))});
     };init();
-  }else if(next.mediaType==='file'){
-    const video=document.createElement('video');video.id='filePlayer';video.src=next.mediaUrl;video.playsInline=true;video.preload='auto';video.controls=false;video.style.width='100%';video.style.height='100%';video.style.position='absolute';video.style.inset='0';$('player').append(video);player=video;
-    video.addEventListener('loadedmetadata',()=>markReady(state),{once:true});
-    video.addEventListener('error',()=>{$('videoError').textContent='Videoni ochib bo‘lmadi. Havola ochiq va MP4/WebM formatida ekanini tekshiring.'});
+  }else if(next.mediaType==='file'||next.mediaType==='hls'){
+    const video=document.createElement('video');video.id='filePlayer';video.playsInline=true;video.preload='auto';video.controls=false;video.style.width='100%';video.style.height='100%';video.style.position='absolute';video.style.inset='0';if(next.mediaType==='hls')video.crossOrigin='anonymous';$('player').append(video);player=video;
+    const ready=()=>markReady(state);
+    if(next.mediaType==='hls'&&window.Hls&&Hls.isSupported()){
+      hlsInstance=new Hls({enableWorker:true,lowLatencyMode:false,backBufferLength:30});hlsInstance.loadSource(next.mediaUrl);hlsInstance.attachMedia(video);
+      hlsInstance.on(Hls.Events.MANIFEST_PARSED,ready);
+      hlsInstance.on(Hls.Events.ERROR,(_event,data)=>{if(data&&data.fatal)$('videoError').textContent='HLS oqimini ochib bo‘lmadi. Sayt CORS yoki maxsus token talab qilishi mumkin.'});
+    }else{video.src=next.mediaUrl;video.addEventListener('loadedmetadata',ready,{once:true})}
+    video.addEventListener('error',()=>{$('videoError').textContent='Videoni ochib bo‘lmadi. Havola ochiq bo‘lishi va sayt CORS orqali ijroga ruxsat berishi kerak.'});
     video.addEventListener('play',()=>{if(!remote&&Date.now()>=remoteUntil&&isHost)emitPlayback(true,video.currentTime)});
     video.addEventListener('pause',()=>{if(!remote&&Date.now()>=remoteUntil&&isHost&&!video.ended)emitPlayback(false,video.currentTime)});
     video.addEventListener('seeked',()=>{if(!remote&&Date.now()>=remoteUntil&&isHost)emitPlayback(!video.paused,video.currentTime)});
@@ -155,7 +162,7 @@ function loadMedia(next,state){
 }
 function getTime(){
   if(!player||!playerReady)return 0;
-  try{if(media.mediaType==='youtube')return player.getCurrentTime()||0;if(media.mediaType==='file')return player.currentTime||0}catch(e){}
+  try{if(media.mediaType==='youtube')return player.getCurrentTime()||0;if(media.mediaType==='file'||media.mediaType==='hls')return player.currentTime||0}catch(e){}
   return 0;
 }
 async function getTimeAsync(){
@@ -164,7 +171,7 @@ async function getTimeAsync(){
 }
 async function isPlaying(){
   if(!player||!playerReady)return false;
-  try{if(media.mediaType==='youtube')return player.getPlayerState()===YT.PlayerState.PLAYING;if(media.mediaType==='file')return !player.paused;if(media.mediaType==='vimeo')return (await player.getPaused())===false}catch(e){}
+  try{if(media.mediaType==='youtube')return player.getPlayerState()===YT.PlayerState.PLAYING;if(media.mediaType==='file'||media.mediaType==='hls')return !player.paused;if(media.mediaType==='vimeo')return (await player.getPaused())===false}catch(e){}
   return false;
 }
 function emitPlayback(playing,time){
@@ -174,7 +181,7 @@ function emitPlayback(playing,time){
 async function seekTo(t){
   if(!player||!playerReady)return;
   const v=Math.max(0,Number(t)||0);
-  try{if(media.mediaType==='youtube')player.seekTo(v,true);else if(media.mediaType==='file')player.currentTime=v;else if(media.mediaType==='vimeo')await player.setCurrentTime(v)}catch(e){}
+  try{if(media.mediaType==='youtube')player.seekTo(v,true);else if(media.mediaType==='file'||media.mediaType==='hls')player.currentTime=v;else if(media.mediaType==='vimeo')await player.setCurrentTime(v)}catch(e){}
 }
 async function play(){if(!player||!playerReady)return;try{if(media.mediaType==='youtube')player.playVideo();else await player.play()}catch(e){$('videoError').textContent='Ijro etish uchun videoni sahifada ishga tushiring.'}}
 async function pause(){if(!player||!playerReady)return;try{if(media.mediaType==='youtube')player.pauseVideo();else await player.pause()}catch(e){}}
@@ -192,10 +199,17 @@ async function applyState(s){
   }catch(e){}
   setTimeout(()=>{remote=false},1300);
 }
-$('loadVideo').onclick=()=>{
-  const next=parseMedia($('youtubeUrl').value.trim());
-  if(!next){$('videoError').textContent='Manbani tanlang va shu manbaga mos to‘liq havolani kiriting. MP4/WebM uchun video faylning bevosita URL manzili kerak.';return}
-  socket.emit('video:load',next);
+$('loadVideo').onclick=async()=>{
+  const raw=$('youtubeUrl').value.trim(),next=parseMedia(raw);
+  if(next){socket.emit('video:load',next);return}
+  let u;try{u=new URL(raw);if(!['http:','https:'].includes(u.protocol))throw new Error('protocol')}catch(e){$('videoError').textContent='To‘liq https:// yoki http:// havolasini kiriting.';return}
+  $('videoError').textContent='Saytdagi video havolasi qidirilmoqda…';$('playState').textContent='Sayt tekshirilmoqda…';$('loadVideo').disabled=true;
+  try{
+    const response=await fetch('/api/extract?url='+encodeURIComponent(u.href)),result=await response.json();
+    if(result.ok&&result.mediaUrl){const found={mediaType:result.mediaType,mediaId:result.mediaUrl,mediaUrl:result.mediaUrl,videoId:null};$('videoError').textContent='Video havolasi topildi. Hamma uchun ulanyapti…';socket.emit('video:load',found);return}
+    socket.emit('site:share',{url:u.href});$('videoError').textContent='Sayt xona ichida ochildi, lekin ochiq video oqimi avtomatik topilmadi. Bu saytda DRM, CORS yoki yashirin player bo‘lishi mumkin — ekran ulashishdan foydalaning.';$('playState').textContent='Sayt ochildi';
+  }catch(e){socket.emit('site:share',{url:u.href});$('videoError').textContent='Sayt ulashildi. Video oqimini avtomatik olish imkoni bo‘lmadi; ekran ulashish yordam beradi.'}
+  finally{$('loadVideo').disabled=!isHost}
 };
 socket.on('video:loaded',s=>{const next=normalizeState(s);if(next)loadMedia(next,s)});
 socket.on('video:state',s=>{const next=normalizeState(s);if(next&&(!media||next.mediaType!==media.mediaType||next.mediaId!==media.mediaId))loadMedia(next,s);else applyState(s)});
