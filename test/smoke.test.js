@@ -53,7 +53,7 @@ test('large movie upload uses acknowledged chunks and byte-range streaming', () 
   assert.match(server, /socket\.on\('video:upload:start'/);
   assert.match(server, /socket\.on\('video:upload:chunk'/);
   assert.match(server, /socket\.on\('video:upload:end'/);
-  assert.match(server, /Accept-Ranges: 'bytes'/);
+  assert.match(server, /'Accept-Ranges': 'bytes'/);
   assert.match(server, /res\.writeHead\(206, headers\)/);
   assert.match(server, /MAX_VIDEO_UPLOAD_BYTES/);
   assert.match(app, /file\.slice\(offset,Math\.min\(file\.size,offset\+chunkSize\)\)\.arrayBuffer\(\)/);
