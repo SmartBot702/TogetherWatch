@@ -228,14 +228,14 @@ function leave(socket) {
       if (s) s.emit('room:role', { isHost: true });
     }
   }
-  if (!r.members.size) { r.emptyAt = Date.now(); persistRoom(r, true); }
+  if (!r.members.size) { r.emptyAt = Date.now(); closeSharedBrowser(r).catch(() => {}); persistRoom(r, true); }
   else { broadcastPeople(id); persistRoom(r); }
 }
 function enter(socket, id, name, create, options = {}) {
   if (!name) return error(socket, 'Ismingizni kiriting.');
   let r = rooms.get(id);
   if (r && !r.members.size && r.emptyAt && Date.now() - r.emptyAt > 6 * 60 * 60 * 1000) { discardRoom(id); r = null; }
-  if (!r && create) { r = { id, hostId: socket.id, members: new Map(), callReady: new Set(), state: emptyState(), queue: [], messages: [], siteUrl: null, siteExpanded: false, screenOwner: null, title: cleanRoomTitle(options.title) || 'Tomosha xonasi', theme: cleanRoomTheme(options.theme), isPublic: Boolean(options.isPublic), game: { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 }, boardStrokes: [] }; rooms.set(id, r); }
+  if (!r && create) { r = { id, hostId: socket.id, members: new Map(), callReady: new Set(), state: emptyState(), queue: [], messages: [], siteUrl: null, siteExpanded: false, screenOwner: null, browserSession: null, title: cleanRoomTitle(options.title) || 'Tomosha xonasi', theme: cleanRoomTheme(options.theme), isPublic: Boolean(options.isPublic), game: { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 }, boardStrokes: [] }; rooms.set(id, r); }
   if (!r.title) r.title = 'Tomosha xonasi';
   if (!r.theme) r.theme = 'violet';
   if (r && !Array.isArray(r.messages)) r.messages = [];
@@ -251,12 +251,122 @@ function enter(socket, id, name, create, options = {}) {
   socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, title: r.title, theme: r.theme, state: r.state, queue: r.queue || [], chatHistory: r.messages.slice(-100), siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner, isPublic: Boolean(r.isPublic), game: r.game || { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 } });
   for (const file of (r.files || [])) socket.emit('file:shared', file);
   for (const link of (r.links || [])) socket.emit('link:shared', link);
-  socket.emit('board:history', Array.isArray(r.boardStrokes) ? r.boardStrokes.slice(-2000) : []);
+  socket.emit('board:history', Array.isArray(r.boardStrokes) ? r.boardStrokes.slice(-2000) : []);\n  if (r.browserSession) { socket.emit('browser:started', { url: r.browserSession.page.url() }); captureSharedBrowser(r, r.browserSession).catch(() => {}); }
   for (const memberId of (r.callReady || [])) if (memberId !== socket.id) socket.emit('rtc:ready', { from: memberId, ready: true });
   socket.to(id).emit('room:system', name + ' xonaga qo‘shildi.');
   broadcastPeople(id);
   persistRoom(r);
 }
+
+const { chromium } = require('playwright-core');
+const BROWSER_VIEWPORT = { width: 1280, height: 800 };
+async function closeSharedBrowser(room) {
+  const session = room && room.browserSession;
+  if (!session) return;
+  room.browserSession = null;
+  if (session.timer) clearInterval(session.timer);
+  try { await session.context.close(); } catch (_) {}
+  try { await session.browser.close(); } catch (_) {}
+  if (room.members && room.members.size) io.to(room.id).emit('browser:closed');
+}
+async function captureSharedBrowser(room, session) {
+  if (!room || room.browserSession !== session || session.capturing || session.page.isClosed()) return;
+  session.capturing = true;
+  try {
+    const image = await session.page.screenshot({ type: 'jpeg', quality: 48, animations: 'disabled', timeout: 5000 });
+    if (room.browserSession === session && room.members.size) io.to(room.id).emit('browser:frame', { data: 'data:image/jpeg;base64,' + image.toString('base64'), url: session.page.url(), at: Date.now() });
+  } catch (err) {
+    if (room.browserSession === session) io.to(room.id).emit('browser:error', { message: 'Brauzer tasvirini olishda xatolik yuz berdi.' });
+  } finally { session.capturing = false; }
+}
+async function openSharedBrowser(room, rawUrl) {
+  const endpoint = process.env.BROWSER_WS_ENDPOINT;
+  if (!endpoint) throw new Error('Umumiy brauzer xizmati sozlanmagan. BROWSER_WS_ENDPOINT ni kiriting va browser-service ni ishga tushiring.');
+  const url = await safePublicUrl(rawUrl);
+  if (!room.browserSession) {
+    const browser = await chromium.connectOverCDP(endpoint, { timeout: 15000 });
+    try {
+      const context = await browser.newContext({ viewport: BROWSER_VIEWPORT, deviceScaleFactor: 1, acceptDownloads: false, ignoreHTTPSErrors: false });
+      const page = await context.newPage();
+      page.setDefaultNavigationTimeout(25000);
+      page.setDefaultTimeout(10000);
+      await page.route('**/*', async route => {
+        const requestUrl = route.request().url();
+        if (/^(about:|data:|blob:|chrome:)/i.test(requestUrl)) return route.continue();
+        try {
+          const parsed = new URL(requestUrl);
+          if (!['http:', 'https:'].includes(parsed.protocol)) return route.abort();
+          await safePublicUrl(parsed.href);
+          return route.continue();
+        } catch (_) { return route.abort('blockedbyclient'); }
+      });
+      const session = { browser, context, page, timer: null, capturing: false, lastInputAt: 0, inputChain: Promise.resolve() };
+      room.browserSession = session;
+      page.on('close', () => { if (room.browserSession === session) closeSharedBrowser(room).catch(() => {}); });
+      page.on('framenavigated', frame => {
+        if (frame === page.mainFrame() && room.browserSession === session) {
+          io.to(room.id).emit('browser:navigated', { url: frame.url() });
+        }
+      });
+      session.timer = setInterval(() => captureSharedBrowser(room, session), 1000);
+      if (session.timer.unref) session.timer.unref();
+      await page.goto(url.href, { waitUntil: 'domcontentloaded', timeout: 25000 });
+      await captureSharedBrowser(room, session);
+      io.to(room.id).emit('browser:started', { url: page.url() });
+      return session;
+    } catch (err) {
+      try { await browser.close(); } catch (_) {}
+      room.browserSession = null;
+      throw err;
+    }
+  }
+  const session = room.browserSession;
+  await session.page.goto(url.href, { waitUntil: 'domcontentloaded', timeout: 25000 });
+  await captureSharedBrowser(room, session);
+  io.to(room.id).emit('browser:started', { url: session.page.url() });
+  return session;
+}
+function browserInput(room, socket, payload) {
+  const session = room && room.browserSession;
+  if (!session || !room.members.has(socket.id) || !payload || typeof payload.type !== 'string') return;
+  const now = Date.now();
+  if (now - (socket.data.lastBrowserInputAt || 0) < 12) return;
+  socket.data.lastBrowserInputAt = now;
+  const p = payload;
+  session.inputChain = session.inputChain.then(async () => {
+    if (room.browserSession !== session || session.page.isClosed()) return;
+    if (p.type === 'move' || p.type === 'down' || p.type === 'up' || p.type === 'click') {
+      const x = Number(p.x), y = Number(p.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > BROWSER_VIEWPORT.width || y > BROWSER_VIEWPORT.height) return;
+      if (p.type === 'move') await session.page.mouse.move(x, y);
+      else if (p.type === 'down') await session.page.mouse.down({ button: p.button === 'right' ? 'right' : 'left' });
+      else if (p.type === 'up') await session.page.mouse.up({ button: p.button === 'right' ? 'right' : 'left' });
+      else await session.page.mouse.click(x, y, { button: p.button === 'right' ? 'right' : 'left' });
+    } else if (p.type === 'wheel') {
+      const dx = Number(p.dx), dy = Number(p.dy);
+      if (Number.isFinite(dx) && Number.isFinite(dy)) await session.page.mouse.wheel(Math.max(-900, Math.min(900, dx)), Math.max(-1200, Math.min(1200, dy)));
+    } else if (p.type === 'key') {
+      const key = typeof p.key === 'string' ? p.key.slice(0, 32) : '';
+      if (!key) return;
+      if (key.length === 1 && !p.ctrl && !p.alt && !p.meta) await session.page.keyboard.insertText(key);
+      else if (['Backspace','Enter','Tab','Escape','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Delete','Home','End','PageUp','PageDown',' ','Shift','Control','Alt','Meta'].includes(key)) await session.page.keyboard.press(key);
+      else if (key.length === 1) {
+        for (const [flag, modifier] of [['ctrl','Control'],['alt','Alt'],['shift','Shift'],['meta','Meta']]) if (p[flag]) await session.page.keyboard.down(modifier);
+        await session.page.keyboard.press(key);
+        for (const [flag, modifier] of [['meta','Meta'],['shift','Shift'],['alt','Alt'],['ctrl','Control']]) if (p[flag]) await session.page.keyboard.up(modifier);
+      }
+    } else if (p.type === 'navigate' && typeof p.url === 'string') {
+      const url = await safePublicUrl(p.url.slice(0, 2048));
+      await session.page.goto(url.href, { waitUntil: 'domcontentloaded', timeout: 25000 });
+    } else if (p.type === 'back') await session.page.goBack({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
+    else if (p.type === 'forward') await session.page.goForward({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
+    else if (p.type === 'reload') await session.page.reload({ waitUntil: 'domcontentloaded', timeout: 20000 });
+    await captureSharedBrowser(room, session);
+  }).catch(err => {
+    if (room.browserSession === session) socket.emit('browser:error', { message: err && /timeout/i.test(err.message) ? 'Sahifa javob bermadi yoki yuklanish vaqti tugadi.' : 'Umumiy brauzer amali bajarilmadi.' });
+  });
+}
+
 io.on('connection', socket => {
   socket.on('room:create', p => {
     leave(socket);
@@ -272,6 +382,32 @@ io.on('connection', socket => {
     if (!/^[A-Z0-9]{6}$/.test(id)) return error(socket, 'Xona kodi noto‘g‘ri.');
     enter(socket, id, cleanName(p && p.name), false);
   });
+
+  socket.on('browser:start', async p => {
+    const id = socket.data.roomId, room = rooms.get(id);
+    if (!room || !room.members.has(socket.id)) return error(socket, 'Avval xonaga kiring.');
+    const raw = typeof (p && p.url) === 'string' ? p.url.slice(0, 2048).trim() : '';
+    if (!raw) return socket.emit('browser:error', { message: 'Sayt manzilini kiriting.' });
+    try {
+      const session = await openSharedBrowser(room, raw);
+      socket.emit('browser:started', { url: session.page.url() });
+    } catch (err) {
+      socket.emit('browser:error', { message: err && err.message ? err.message.slice(0, 240) : 'Umumiy brauzer ishga tushmadi.' });
+    }
+  });
+  socket.on('browser:input', p => {
+    const id = socket.data.roomId, room = rooms.get(id);
+    if (room) browserInput(room, socket, p);
+  });
+  socket.on('browser:navigate', p => {
+    const id = socket.data.roomId, room = rooms.get(id);
+    if (!room || !room.members.has(socket.id)) return;
+    browserInput(room, socket, { type: 'navigate', url: p && p.url });
+  });
+  socket.on('browser:back', () => { const id=socket.data.roomId, room=rooms.get(id); if(room&&room.members.has(socket.id)) browserInput(room,socket,{type:'back'}); });
+  socket.on('browser:forward', () => { const id=socket.data.roomId, room=rooms.get(id); if(room&&room.members.has(socket.id)) browserInput(room,socket,{type:'forward'}); });
+  socket.on('browser:reload', () => { const id=socket.data.roomId, room=rooms.get(id); if(room&&room.members.has(socket.id)) browserInput(room,socket,{type:'reload'}); });
+
   socket.on('room:settings', p => {
     const id = socket.data.roomId, r = rooms.get(id);
     if (!r || !r.members.has(socket.id) || r.hostId !== socket.id) return error(socket, 'Xona sozlamalarini faqat xona egasi o‘zgartira oladi.');
