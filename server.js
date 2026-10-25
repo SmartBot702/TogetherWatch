@@ -398,7 +398,7 @@ io.on('connection', socket => {
 
   socket.on('disconnect', () => leave(socket));
 });
-auth.attach(app).then(async () => {
+auth.attach(app, io).then(async () => {
   const savedRooms = await auth.loadRoomSnapshots();
   for (const saved of savedRooms) {
     const payload = saved.payload || {};
