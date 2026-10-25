@@ -193,6 +193,26 @@ test('two clients share a room, activity selection, and chat in realtime', async
     const guestRoom = await guestJoinedPromise;
     assert.equal(guestRoom.roomId, hostRoom.roomId);
 
+    // Upload a video in binary chunks, then verify the shared file supports HTTP byte ranges.
+    const sampleVideo = Buffer.from([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    const startUpload = await new Promise(resolve => host.emit('video:upload:start', { name: 'sample.mp4', size: sampleVideo.length, mime: 'video/mp4' }, resolve));
+    assert.equal(startUpload.ok, true, startUpload.error);
+    const chunkAck = await new Promise(resolve => host.emit('video:upload:chunk', { uploadId: startUpload.uploadId, index: 0, data: sampleVideo }, resolve));
+    assert.equal(chunkAck.ok, true, chunkAck.error);
+    const uploadedPromise = waitForEvent(guest, 'video:uploaded');
+    const finishUpload = await new Promise(resolve => host.emit('video:upload:end', { uploadId: startUpload.uploadId }, resolve));
+    assert.equal(finishUpload.ok, true, finishUpload.error);
+    const sharedMovie = await uploadedPromise;
+    assert.equal(sharedMovie.id, finishUpload.file.id);
+    const rangedMovie = await fetch(url + sharedMovie.url, { headers: { Range: 'bytes=2-5' } });
+    assert.equal(rangedMovie.status, 206, 'uploaded movies must support seeking through HTTP byte ranges');
+    assert.deepEqual(Buffer.from(await rangedMovie.arrayBuffer()), Buffer.from([2, 3, 4, 5]));
+    const loadedMoviePromise = waitForEvent(guest, 'video:loaded');
+    host.emit('video:load', { mediaType: 'uploaded', mediaId: sharedMovie.id, ext: sharedMovie.ext });
+    const loadedMovie = await loadedMoviePromise;
+    assert.equal(loadedMovie.mediaType, 'file');
+    assert.equal(loadedMovie.mediaUrl, sharedMovie.url);
+
     // Malformed WebRTC signaling packets should be ignored, not crash the server.
     host.emit('rtc:offer', null);
     host.emit('rtc:answer', null);
