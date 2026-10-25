@@ -337,7 +337,7 @@ function enter(socket, id, name, create, options = {}) {
   if (!name) return error(socket, 'Ismingizni kiriting.');
   let r = rooms.get(id);
   if (r && !r.members.size && r.emptyAt && Date.now() - r.emptyAt > 6 * 60 * 60 * 1000) { discardRoom(id); r = null; }
-  if (!r && create) { r = { id, hostId: socket.id, members: new Map(), callReady: new Set(), state: emptyState(), queue: [], messages: [], siteUrl: null, siteExpanded: false, screenOwner: null, browserSession: null, activeActivity: 'video', title: cleanRoomTitle(options.title) || 'Tomosha xonasi', theme: cleanRoomTheme(options.theme), isPublic: Boolean(options.isPublic), game: { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 }, activeGame: 'tictactoe', connectFour: { board: Array.from({length:6},()=>Array(7).fill(null)), turn: 'R', winner: null, moves: 0 }, boardStrokes: [] }; rooms.set(id, r); }
+  if (!r && create) { r = { id, hostId: socket.id, members: new Map(), callReady: new Set(), state: emptyState(), queue: [], messages: [], siteUrl: null, siteExpanded: false, subtitles: null, screenOwner: null, browserSession: null, activeActivity: 'video', title: cleanRoomTitle(options.title) || 'Tomosha xonasi', theme: cleanRoomTheme(options.theme), isPublic: Boolean(options.isPublic), game: { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 }, activeGame: 'tictactoe', connectFour: { board: Array.from({length:6},()=>Array(7).fill(null)), turn: 'R', winner: null, moves: 0 }, boardStrokes: [] }; rooms.set(id, r); }
   if (!r.title) r.title = 'Tomosha xonasi';
   if (!r.theme) r.theme = 'violet';
   if (r && !Array.isArray(r.messages)) r.messages = [];
@@ -350,7 +350,7 @@ function enter(socket, id, name, create, options = {}) {
   socket.data.roomId = id;
   socket.data.name = name;
   r.members.set(socket.id, { id: socket.id, name });
-  socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, title: r.title, theme: r.theme, state: r.state, queue: r.queue || [], videos: r.videos || [], chatHistory: r.messages.slice(-100), videos: Array.isArray(r.videos) ? r.videos : [], siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner, isPublic: Boolean(r.isPublic), activeActivity: r.activeActivity || 'video', activeGame: r.activeGame || 'tictactoe', game: r.game || { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 }, connectFour: r.connectFour || { board: Array.from({length:6},()=>Array(7).fill(null)), turn: 'R', winner: null, moves: 0 } });
+  socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, title: r.title, theme: r.theme, state: r.state, subtitles: r.subtitles || null, queue: r.queue || [], videos: r.videos || [], chatHistory: r.messages.slice(-100), videos: Array.isArray(r.videos) ? r.videos : [], siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner, isPublic: Boolean(r.isPublic), activeActivity: r.activeActivity || 'video', activeGame: r.activeGame || 'tictactoe', game: r.game || { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 }, connectFour: r.connectFour || { board: Array.from({length:6},()=>Array(7).fill(null)), turn: 'R', winner: null, moves: 0 } });
   for (const file of (r.files || [])) socket.emit('file:shared', file);
   for (const link of (r.links || [])) socket.emit('link:shared', link);
   socket.emit('board:history', Array.isArray(r.boardStrokes) ? r.boardStrokes.slice(-2000) : []);
@@ -846,6 +846,8 @@ io.on('connection', socket => {
     const item = r.queue.shift();
     const { queueId, addedBy, ...media } = item;
     r.state = { ...media, isPlaying: false, currentTime: 0, updatedAt: Date.now() };
+    r.subtitles = null;
+    io.to(id).emit('subtitles:cleared');
     io.to(id).emit('video:loaded', r.state);
     io.to(id).emit('queue:updated', r.queue);
     persistRoom(r);
@@ -872,6 +874,24 @@ io.on('connection', socket => {
     r.state = { ...media, isPlaying: false, currentTime: 0, updatedAt: Date.now() };
     io.to(id).emit('video:loaded', r.state);
     persistRoom(r);
+  });
+  socket.on('subtitles:share', (p, ack) => {
+    const id = socket.data.roomId, r = rooms.get(id);
+    const reply = typeof ack === 'function' ? ack : () => {};
+    if (!r || !r.members.has(socket.id)) return reply({ok:false,error:'Avval tomosha xonasiga kiring.'});
+    if (r.hostId !== socket.id) return reply({ok:false,error:'Umumiy subtitrni faqat xona egasi ulasha oladi.'});
+    if (!p || typeof p.vtt !== 'string' || Buffer.byteLength(p.vtt, 'utf8') > 512 * 1024 || !/^\uFEFF?WEBVTT(?:\s|$)/.test(p.vtt.trimStart())) return reply({ok:false,error:'VTT subtitr noto‘g‘ri yoki 512 KB dan katta.'});
+    const rawName = typeof p.name === 'string' ? p.name.slice(0,120) : 'Subtitrlar.vtt';
+    const name = rawName.replace(/[<>\r\n]/g, '').trim() || 'Subtitrlar.vtt';
+    r.subtitles = {name, vtt:p.vtt};
+    io.to(id).emit('subtitles:shared', r.subtitles);
+    reply({ok:true});
+  });
+  socket.on('subtitles:clear', () => {
+    const id = socket.data.roomId, r = rooms.get(id);
+    if (!r || !r.members.has(socket.id) || r.hostId !== socket.id) return;
+    r.subtitles = null;
+    io.to(id).emit('subtitles:cleared');
   });
   function playback(p) {
     const id = socket.data.roomId, r = rooms.get(id);
