@@ -110,7 +110,10 @@ class NativeScreenShareService : Service() {
     }
 
     private fun connectRoom(base: String, displayName: String) {
-        val opts = IO.Options.builder().setReconnection(true).setTimeout(15000).build()
+        val opts = IO.Options().apply {
+            reconnection = true
+            timeout = 15000
+        }
         socket = IO.socket(URI.create(base), opts)
         socket?.on(Socket.EVENT_CONNECT) {
             socket?.emit("room:join", JSONObject().put("roomId", roomId).put("name", (displayName + " screen").take(28)))
