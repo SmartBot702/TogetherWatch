@@ -123,6 +123,14 @@ test('two clients share a room, activity selection, and chat in realtime', async
     guest = connect(url, { transports: ['websocket'], reconnection: false, timeout: 5000 });
     await Promise.all([waitForEvent(host, 'connect'), waitForEvent(guest, 'connect')]);
 
+    // Malformed WebRTC signaling packets should be ignored, not crash the server.
+    host.emit('rtc:offer', null);
+    host.emit('rtc:answer', null);
+    host.emit('rtc:ice', null);
+    host.emit('rtc:offer', { to: guest.id, offer: { type: 'offer', sdp: 'x'.repeat(200001) } });
+    const healthAfterBadRtc = await fetch(url + '/health');
+    assert.equal(healthAfterBadRtc.status, 200, 'server should remain healthy after malformed RTC packets');
+
     const hostJoinedPromise = waitForEvent(host, 'room:joined');
     host.emit('room:create', { name: 'HostTest', title: 'Realtime test room', isPublic: true });
     const hostRoom = await hostJoinedPromise;
