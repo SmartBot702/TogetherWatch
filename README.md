@@ -66,7 +66,7 @@ render.yaml Node.js xizmatining asosiy qismini joylashtiradi, lekin Docker Compo
 - Ovoz/video va ekran ulashish uchun HTTPS hamda brauzer ruxsatlari kerak. Ayrim tarmoqlarda TURN_URLS, TURN_USERNAME, TURN_CREDENTIAL sozlash talab etiladi.
 - .env faylini GitHub’ga yuklamang. Docker volume’lar ma’lumotni saqlaydi; muntazam PostgreSQL backup ham sozlang.
 - Google Drive preview iframe’ining ichki Play/Pause va vaqtini TogetherWatch bevosita boshqara olmaydi. Drive havolasini umumiy masofaviy brauzerda ochib, video ijrosini boshlash orqali ochiq media oqimini aniqlashga urinib ko‘rish mumkin, ammo Drive’ning vaqtinchalik yoki cookie talab qiladigan oqimi ko‘pincha umumiy playerga ko‘chmaydi. Bunday holatda Drive ruxsatini “Havolaga ega har kim — Viewer” qilib, Drive oynasida har bir tomoshabin o‘zi Play bosishi kerak.
-- Katta video fayllari server diskida joy egallaydi va har bir tomoshabinga serverdan oqim uzatiladi; hosting bandwidth va disk limitlarini hisobga oling. Docker Compose’da yuklangan videolar `togetherwatch_uploads` volume’ida saqlanadi.
+- Katta video fayllari server diskida joy egallaydi va har bir tomoshabinga serverdan oqim uzatiladi; tashqi videolarni relay qilishda ham har bir tomoshabin uchun serverdan tashqi manbaga so‘rov tushishi mumkin. Bu CORS muammolarini kamaytiradi, lekin internet tezligini kafolatlamaydi; VPS bandwidth va trafik limitlarini hisobga oling. Docker Compose’da yuklangan videolar `togetherwatch_uploads` volume’ida saqlanadi.
 - Kontentni qayta tarqatmang; video platformalarining mualliflik huquqi va foydalanish shartlariga rioya qiling.
 
 
