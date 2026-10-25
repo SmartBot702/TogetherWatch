@@ -551,6 +551,7 @@ function clearSubtitles(){
   if(subtitleObjectUrl){URL.revokeObjectURL(subtitleObjectUrl);subtitleObjectUrl=null}
   $('subtitleFileInput').value='';
   $('clearSubtitles').disabled=true;
+  $('shareSubtitles').disabled=true;
   $('subtitleFileInput').disabled=true;
   $('subtitleStatus').textContent=player&&player.tagName==='VIDEO'?'Subtitr tanlanmagan':'Subtitr uchun oddiy video player kerak';
 }
