@@ -45,6 +45,24 @@ test('VK Video and OK links are parsed into platform embed players', () => {
   assert.match(server, /if \(type === 'ok'\)/);
 });
 
+test('uploaded videos can be removed by the room host and disappear for everyone', () => {
+  const server = read('server.js');
+  const app = read('public/app.js');
+  assert.match(server, /socket\.on\('video:remove'/);
+  assert.match(server, /room\.hostId !== socket\.id/);
+  assert.match(server, /io\.to\(id\)\.emit\('video:removed'/);
+  assert.match(server, /fsp\.unlink\(path\.join\(UPLOADS_DIR, p\.id \+ '\.' \+ ext\)\)/);
+  assert.match(app, /socket\.emit\('video:remove',\{id:file\.id\}/);
+  assert.match(app, /socket\.on\('video:removed'/);
+  assert.match(app, /remove-shared-video/);
+});
+
+test('Google Drive limitations are documented for users', () => {
+  const readme = read('README.md');
+  assert.match(readme, /Google Drive video havolalari/);
+  assert.match(readme, /Play\/Pause, seek va vaqtni sinxron boshqarish hozircha qo‘llanmaydi/);
+});
+
 test('large movie upload uses acknowledged chunks and byte-range streaming', () => {
   const server = read('server.js');
   const app = read('public/app.js');
