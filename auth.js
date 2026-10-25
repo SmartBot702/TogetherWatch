@@ -119,7 +119,7 @@ async function attach(app) {
     const user = currentUser(req);
     if (!user) return fail(res, 401, 'Avval akkauntga kiring.');
     const friends = state.friends.filter(r => r.users.includes(user.id)).map(r => state.users.find(u => u.id === r.users.find(id => id !== user.id))).filter(Boolean).map(publicUser);
-    const incoming = state.friendRequests.filter(r => r.to === user.id && r.status === 'pending').map(r => ({ id: r.id, user: publicUser(state.users.find(u => u.id === r.from)).user }));
+    const incoming = state.friendRequests.filter(r => r.to === user.id && r.status === 'pending').map(r => ({ id: r.id, user: publicUser(state.users.find(u => u.id === r.from)) })).filter(r => r.user);
     res.json({ ok: true, friends, incoming: incoming.map(r => ({ id: r.id, user: r.user })) });
   });
   app.post('/api/friends/request', async (req, res) => {
