@@ -356,6 +356,9 @@ function browserInput(room, socket, payload) {
         await session.page.keyboard.press(key);
         for (const [flag, modifier] of [['meta','Meta'],['shift','Shift'],['alt','Alt'],['ctrl','Control']]) if (p[flag]) await session.page.keyboard.up(modifier);
       }
+    } else if (p.type === 'text') {
+      const value = typeof p.text === 'string' ? p.text.slice(0, 2000) : '';
+      if (value) await session.page.keyboard.insertText(value);
     } else if (p.type === 'navigate' && typeof p.url === 'string') {
       const url = await safePublicUrl(p.url.slice(0, 2048));
       await session.page.goto(url.href, { waitUntil: 'domcontentloaded', timeout: 25000 });
