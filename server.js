@@ -636,7 +636,7 @@ io.on('connection', socket => {
     const id = socket.data.roomId, r = rooms.get(id);
     if (!r || !r.members.has(socket.id)) return error(socket, 'Avval tomosha xonasiga kiring.');
     const media = normalizeMedia(p);
-    if (!media) return error(socket, 'YouTube, Vimeo yoki to‘g‘ridan-to‘g‘ri MP4/WebM havolasini kiriting.');
+    if (!media) return error(socket, 'YouTube, Vimeo, MP4/WebM yoki HLS (.m3u8) video havolasini kiriting.');
     r.state = { ...media, isPlaying: false, currentTime: 0, updatedAt: Date.now() };
     io.to(id).emit('video:loaded', r.state);
     persistRoom(r);
