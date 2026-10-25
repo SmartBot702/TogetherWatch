@@ -720,7 +720,7 @@ function setSection(section){
   $('heroTitle').parentElement.classList.toggle('hidden',section==='friends'||section==='profile'||Boolean(roomId));
   $('entry').classList.toggle('hidden',!((section==='home'||section==='watch')&&!roomId));
   $('how').classList.toggle('hidden',section!=='home'||Boolean(roomId));
-  $('workspace').classList.toggle('hidden',!(section==='watch'&&Boolean(roomId)));
+  $('workspace').classList.toggle('hidden',!roomId||section==='friends'||section==='profile');
 }
 $('navHome').onclick=()=>setSection('home');
 $('navFriends').onclick=()=>{setSection('friends');if(!currentAccount)$('friendsMessage').textContent='Do‘stlarni qidirish uchun akkauntga kiring.';else refreshFriends()};
