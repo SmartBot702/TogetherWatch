@@ -124,9 +124,12 @@ test('two clients share a room, activity selection, and chat in realtime', async
     await Promise.all([waitForEvent(host, 'connect'), waitForEvent(guest, 'connect')]);
 
     const hostJoinedPromise = waitForEvent(host, 'room:joined');
-    host.emit('room:create', { name: 'HostTest', title: 'Realtime test room' });
+    host.emit('room:create', { name: 'HostTest', title: 'Realtime test room', isPublic: true });
     const hostRoom = await hostJoinedPromise;
     assert.match(hostRoom.roomId, /^[A-Z0-9]{6}$/);
+    const publicRoomsResponse = await fetch(url + '/api/rooms/public');
+    const publicRooms = await publicRoomsResponse.json();
+    assert.ok(publicRooms.rooms.some(room => room.id === hostRoom.roomId), 'public room should appear in discovery');
 
     const guestJoinedPromise = waitForEvent(guest, 'room:joined');
     guest.emit('room:join', { roomId: hostRoom.roomId, name: 'GuestTest' });
