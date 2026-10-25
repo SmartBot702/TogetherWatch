@@ -155,12 +155,48 @@ $('browserBack').onclick=()=>socket.emit('browser:back');
 $('browserForward').onclick=()=>socket.emit('browser:forward');
 $('browserReload').onclick=()=>socket.emit('browser:reload');
 function browserPoint(e){const rect=sharedBrowserImage.getBoundingClientRect();return{x:Math.max(0,Math.min(browserFrameWidth,(e.clientX-rect.left)/Math.max(1,rect.width)*browserFrameWidth)),y:Math.max(0,Math.min(browserFrameHeight,(e.clientY-rect.top)/Math.max(1,rect.height)*browserFrameHeight))}}
-sharedBrowserStage.addEventListener('pointerdown',e=>{if(!sharedBrowserImage.src)return;e.preventDefault();sharedBrowserStage.focus();sharedBrowserStage.setPointerCapture?.(e.pointerId);const p=browserPoint(e);socket.emit('browser:input',{type:'down',...p,button:e.button===2?'right':'left'})});
-sharedBrowserStage.addEventListener('pointerup',e=>{if(!sharedBrowserImage.src)return;e.preventDefault();const p=browserPoint(e);socket.emit('browser:input',{type:'move',...p});socket.emit('browser:input',{type:'up',...p,button:e.button===2?'right':'left'})});
-sharedBrowserStage.addEventListener('pointermove',e=>{if(!sharedBrowserImage.src)return;const now=Date.now();if(now-lastBrowserMove<35)return;lastBrowserMove=now;socket.emit('browser:input',{type:'move',...browserPoint(e)})});
+let browserTouch=null;
+sharedBrowserStage.addEventListener('pointerdown',e=>{
+  if(!sharedBrowserImage.src)return;
+  e.preventDefault();sharedBrowserStage.focus();sharedBrowserStage.setPointerCapture?.(e.pointerId);
+  if(e.pointerType==='touch'){browserTouch={id:e.pointerId,x:e.clientX,y:e.clientY,lastX:e.clientX,lastY:e.clientY,scrolling:false};return}
+  const p=browserPoint(e);socket.emit('browser:input',{type:'down',...p,button:e.button===2?'right':'left'});
+});
+sharedBrowserStage.addEventListener('pointerup',e=>{
+  if(!sharedBrowserImage.src)return;e.preventDefault();
+  if(e.pointerType==='touch'&&browserTouch&&browserTouch.id===e.pointerId){
+    const touch=browserTouch;browserTouch=null;
+    if(!touch.scrolling){const p=browserPoint(e);socket.emit('browser:input',{type:'click',...p})}
+    return;
+  }
+  const p=browserPoint(e);socket.emit('browser:input',{type:'move',...p});socket.emit('browser:input',{type:'up',...p,button:e.button===2?'right':'left'});
+});
+sharedBrowserStage.addEventListener('pointercancel',e=>{if(browserTouch&&browserTouch.id===e.pointerId)browserTouch=null});
+sharedBrowserStage.addEventListener('pointermove',e=>{
+  if(!sharedBrowserImage.src)return;
+  if(e.pointerType==='touch'&&browserTouch&&browserTouch.id===e.pointerId){
+    const touch=browserTouch,dx=e.clientX-touch.lastX,dy=e.clientY-touch.lastY;
+    if(!touch.scrolling&&Math.hypot(e.clientX-touch.x,e.clientY-touch.y)>9)touch.scrolling=true;
+    if(touch.scrolling&&(Math.abs(dx)+Math.abs(dy)>0))socket.emit('browser:input',{type:'wheel',dx:-dx*2,dy:-dy*2});
+    touch.lastX=e.clientX;touch.lastY=e.clientY;return;
+  }
+  const now=Date.now();if(now-lastBrowserMove<35)return;lastBrowserMove=now;
+  socket.emit('browser:input',{type:'move',...browserPoint(e)});
+});
 sharedBrowserStage.addEventListener('contextmenu',e=>e.preventDefault());
 sharedBrowserStage.addEventListener('wheel',e=>{if(!sharedBrowserImage.src)return;e.preventDefault();socket.emit('browser:input',{type:'wheel',dx:e.deltaX,dy:e.deltaY})},{passive:false});
 sharedBrowserStage.addEventListener('keydown',e=>{if(!sharedBrowserImage.src)return;if(['Tab','Backspace','ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' ','Enter','Escape','Delete','Home','End','PageUp','PageDown'].includes(e.key)||e.key.length===1){e.preventDefault();socket.emit('browser:input',{type:'key',key:e.key,ctrl:e.ctrlKey,alt:e.altKey,shift:e.shiftKey,meta:e.metaKey})}});
+function sendSharedBrowserText(submit=false){
+  const field=$('sharedBrowserText'),value=field.value;
+  if(!value||!sharedBrowserImage.src)return;
+  socket.emit('browser:input',{type:'text',text:value.slice(0,2000)});
+  field.value='';
+  if(submit)socket.emit('browser:input',{type:'key',key:'Enter'});
+}
+$('sendSharedBrowserText').onclick=()=>sendSharedBrowserText(false);
+$('submitSharedBrowserText').onclick=()=>sendSharedBrowserText(true);
+$('sharedBrowserText').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();sendSharedBrowserText(true)}});
+$('focusSharedBrowser').onclick=()=>{sharedBrowserStage.focus();$('sharedBrowserText').focus()};
 socket.on('browser:frame',d=>{if(!d||!d.data)return;sharedBrowserImage.src=d.data;if(d.url)$('sharedBrowserUrl').value=d.url;$('sharedBrowserStatus').textContent='Ulangan. Hamma shu brauzerni ko‘ryapti.'});
 socket.on('browser:started',d=>{if(d&&d.url)$('sharedBrowserUrl').value=d.url;$('sharedBrowserStatus').textContent='Umumiy brauzer tayyor.'});
 socket.on('browser:navigated',d=>{if(d&&d.url)$('sharedBrowserUrl').value=d.url});
@@ -779,9 +815,21 @@ async function stopScreenShare(){
   $('stopScreenShare').classList.add('hidden');
   $('screenStatus').textContent='Ekran ulashish to‘xtatildi.';
 }
+$('screenVideoFallback').onclick=()=>{
+  const tab=document.querySelector('[data-room-tab="video"]');
+  if(tab)tab.click();
+  setTimeout(()=>$('youtubeUrl').focus(),50);
+  $('screenStatus').textContent='Video bo‘limida YouTube, Vimeo yoki to‘g‘ridan-to‘g‘ri MP4/WebM havolasini kiriting. Netflix kabi DRM himoyali kontentni havola bilan sinxron ijro etish kafolatlanmaydi.';
+};
 $('screenShare').onclick=async()=>{
   if(screenOwner&&screenOwner!==socket.id){$('screenStatus').textContent='Boshqa ishtirokchi hozir ekran ulashyapti.';return}
-  if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia){$('screenStatus').textContent='Bu brauzer ekran ulashishni qo‘llamaydi. Kompyuterdagi Chrome yoki Edge’da urinib ko‘ring.';return}
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia){
+    const isAndroid=/Android/i.test(navigator.userAgent),isIOS=/iPhone|iPad|iPod/i.test(navigator.userAgent);
+    $('screenStatus').textContent=(isAndroid||isIOS)
+      ?'Telefon brauzeringiz ekran ulashish funksiyasini bermayapti. Bu saytning xatosi emas: Android/iOS uchun tizim ekran ruxsatidan foydalanadigan mobil ilova kerak. Hozircha Video bo‘limiga video havolasini qo‘shing.'
+      :'Bu brauzer ekran ulashishni qo‘llamaydi. Ekran ulashish API’si mavjud zamonaviy brauzerda oching.';
+    return;
+  }
   try{
     screenStream=await navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
     $('sharedScreen').srcObject=screenStream;
@@ -789,7 +837,7 @@ $('screenShare').onclick=async()=>{
     $('screenShare').classList.add('hidden');
     $('stopScreenShare').classList.remove('hidden');
     screenOwner=socket.id;socket.emit('screen:started');
-    $('screenStatus').textContent='Ekraningiz ulashilmoqda. Ovoz uzatilishi brauzer va tanlangan tabga bog‘liq.';
+    $('screenStatus').textContent='Ekraningiz ulashilmoqda. Telefonda ilova almashganda uzatish to‘xtashi mumkin; audio va himoyalangan videolar qurilma/servis cheklovlariga bog‘liq.';
     screenStream.getTracks().forEach(t=>t.addEventListener('ended',stopScreenShare,{once:true}));
     await syncScreenPeers();
   }catch(e){
