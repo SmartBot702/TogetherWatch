@@ -164,7 +164,7 @@ function makeCode() {
   return code;
 }
 function cleanName(v) { return typeof v === 'string' ? v.replace(/[<>]/g, '').trim().slice(0, 24) : ''; }
-function cleanRoomTitle(v) { return typeof v === 'string' ? v.replace(/[<>]/g, '').replace(/\\s+/g, ' ').trim().slice(0, 60) : ''; }
+function cleanRoomTitle(v) { return typeof v === 'string' ? v.replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60) : ''; }
 function cleanRoomTheme(v) { return ['violet','ocean','sunset','emerald'].includes(v) ? v : 'violet'; }
 function validVideoId(v) { return typeof v === 'string' && /^[A-Za-z0-9_-]{11}$/.test(v); }
 function emptyState() {
