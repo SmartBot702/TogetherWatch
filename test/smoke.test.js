@@ -68,6 +68,23 @@ test('room chat supports quoted replies', () => {
   assert.match(app, /m\.replyTo\.name/);
 });
 
+test('chat search, member mentions, and shared-browser media detection are available', () => {
+  const html = read('public/index.html');
+  const app = read('public/app.js');
+  const server = read('server.js');
+  assert.match(html, /id="chatSearch"/);
+  assert.match(html, /id="mentionSuggestions"/);
+  assert.match(app, /function applyChatSearch\(\)/);
+  assert.match(app, /function updateMentionSuggestions\(\)/);
+  assert.match(app, /function renderMentionText\(node,text\)/);
+  assert.match(app, /browser:media-candidate/);
+  assert.match(app, /browser:use-media/);
+  assert.match(server, /page\.on\('response'/);
+  assert.match(server, /browser:media-candidate/);
+  assert.match(server, /socket\.on\('browser:use-media'/);
+  assert.match(server, /r\.hostId !== socket\.id/);
+});
+
 test('room chat supports author-only editing and deletion', () => {
   const app = read('public/app.js');
   const server = read('server.js');
