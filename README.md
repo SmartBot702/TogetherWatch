@@ -26,13 +26,13 @@ Open http://localhost:3000. Test with two browser tabs or devices. Use a YouTube
 ## Included
 - Responsive Uzbek UI
 - Room creation/joining, 6-character invite codes and shareable links
-- Host-controlled synchronized playback for YouTube, Vimeo, and direct MP4/WebM URLs (best effort)
+- Synchronized playback for YouTube, Vimeo, direct MP4/WebM, and HLS URLs (best effort; embedding rules still apply)
 - Explicit source selector so users know which kind of link they are adding
-- Host screen sharing over WebRTC for other video sites or local playback (browser support varies)
+- Screen sharing over WebRTC for other video sites or local playback (browser support varies)
 - Optional room voice/video calls with microphone and camera permissions
-- Empty rooms remain joinable in server memory for up to six hours after everyone leaves
+- Empty rooms, current video, queue, and the last 100 chat messages remain in server memory for up to six hours after everyone leaves
 - Room member list and real-time chat
 - \`/health\` health endpoint
 
 ## MVP limitations
-Rooms and messages are stored in memory and disappear on server restart. This is an initial MVP, not a production-ready service: add persistent storage, authentication, rate limiting, and monitoring before public launch. Playback sync depends on YouTube embed permissions, browser autoplay rules and network latency. Voice/video calls and screen sharing require browser permissions and is best supported in desktop browsers; system audio capture depends on the browser and selected tab. Screen-sharing relay uses peer-to-peer WebRTC and may be limited by NAT/firewall conditions. Empty rooms and chat remain in memory only and are lost if the server restarts. This app does not host or redistribute video files; respect copyright and platform terms.
+Rooms and messages are stored in memory and disappear on server restart. This is an initial MVP, not a production-ready service: add persistent storage, authentication, rate limiting, and monitoring before public launch. Playback sync depends on YouTube embed permissions, browser autoplay rules and network latency. Voice/video calls and screen sharing require browser permissions and is best supported in desktop browsers; system audio capture depends on the browser and selected tab. Screen-sharing and calls use peer-to-peer WebRTC. By default they use public STUN servers; some NAT/firewall networks require TURN configuration. Set `TURN_URLS`, `TURN_USERNAME`, and `TURN_CREDENTIAL` in the service environment to enable a TURN relay. For production, use a TURN provider that supports temporary credentials rather than a permanent shared secret. Empty rooms and chat remain in memory only and are lost if the server restarts. This app does not host or redistribute video files; respect copyright and platform terms.
