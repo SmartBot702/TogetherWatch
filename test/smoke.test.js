@@ -153,6 +153,12 @@ test('two clients share a room, activity selection, and chat in realtime', async
     assert.equal(message.text, 'integration-test-message');
     assert.equal(message.name, 'HostTest');
 
+    const sharedFilePromise = waitForEvent(guest, 'file:shared');
+    host.emit('file:share', { name: 'note.txt', data: 'data:text/plain;base64,aGVsbG8=' });
+    const sharedFile = await sharedFilePromise;
+    assert.equal(sharedFile.name, 'note.txt');
+    assert.equal(sharedFile.mime, 'text/plain');
+
     const videoLoadedPromise = waitForEvent(guest, 'video:loaded');
     host.emit('video:load', { videoId: 'dQw4w9WgXcQ' });
     const loaded = await videoLoadedPromise;
