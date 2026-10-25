@@ -61,11 +61,31 @@ function system(t){const e=document.createElement('div');e.className='system';e.
 function scroll(){$('chat').scrollTop=$('chat').scrollHeight}
 socket.on('room:system',system);
 function renderChatMessage(m){
-  const e=document.createElement('div');e.className='message';const b=document.createElement('b');b.textContent=m.name;
-  const p=document.createElement('p');p.textContent=m.text;e.append(b,p);$('chat').append(e);
+  const e=document.createElement('div');e.className='message';
+  const header=document.createElement('div');header.className='message-header';
+  const b=document.createElement('b');b.textContent=m.name;
+  const time=document.createElement('time');time.className='message-time';time.dateTime=new Date(Number(m.at)||Date.now()).toISOString();time.textContent=new Date(Number(m.at)||Date.now()).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  header.append(b,time);
+  const p=document.createElement('p');p.textContent=m.text;e.append(header,p);$('chat').append(e);
 }
+const typingUsers=new Map();
+function renderTyping(){const names=Array.from(typingUsers.values());$('typingIndicator').textContent=names.length?names.join(', ')+' yozmoqda…':''}
+socket.on('chat:typing',d=>{
+  if(!d||!d.from||d.from===socket.id)return;
+  if(d.typing){typingUsers.set(d.from,d.name||'Ishtirokchi');clearTimeout(typingUsers.get(d.from+'-timer'));const timer=setTimeout(()=>{typingUsers.delete(d.from);renderTyping()},1800);typingUsers.set(d.from+'-timer',timer)}
+  else{const timer=typingUsers.get(d.from+'-timer');if(timer)clearTimeout(timer);typingUsers.delete(d.from);typingUsers.delete(d.from+'-timer')}
+  renderTyping();
+});
+let typingStopTimer=null,lastTypingSent=0;
+$('chatText').addEventListener('input',()=>{
+  if(!roomId)return;
+  const now=Date.now();
+  if($('chatText').value.trim()&&now-lastTypingSent>700){socket.emit('chat:typing',{typing:true});lastTypingSent=now}
+  clearTimeout(typingStopTimer);
+  typingStopTimer=setTimeout(()=>{if(roomId)socket.emit('chat:typing',{typing:false})},1100);
+});
 socket.on('chat:message',m=>{renderChatMessage(m);scroll()});
-$('chatForm').onsubmit=e=>{e.preventDefault();const text=$('chatText').value.trim();if(text&&roomId){socket.emit('chat:send',{text});$('chatText').value=''}};
+$('chatForm').onsubmit=e=>{e.preventDefault();const text=$('chatText').value.trim();if(text&&roomId){socket.emit('chat:send',{text});socket.emit('chat:typing',{typing:false});$('chatText').value='';clearTimeout(typingStopTimer)}};
 let renderedSiteUrl=null;
 function renderSharedSite(url,expanded){
   siteUrl=url||null;siteExpanded=Boolean(expanded);
