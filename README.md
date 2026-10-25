@@ -1,6 +1,6 @@
 # TogetherWatch
 
-A real-time watch-party web app: create rooms, invite friends with a six-character code or URL, chat live, and synchronize YouTube, Vimeo, or direct MP4/WebM video links, and share a host's screen for other streaming sites.
+A real-time watch-party web app: create rooms, invite friends with a six-character code or URL, chat live, and synchronize YouTube, Vimeo, or direct MP4/WebM video links, and share a site URL for each participant to open locally. Screen sharing remains optional, not required for supported synchronized video sources.
 
 ## Run locally
 Requires Node.js 18+.
