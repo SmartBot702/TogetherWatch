@@ -319,7 +319,7 @@ io.on('connection', socket => {
     if (!Array.isArray(r.links)) r.links = [];
     if (r.links.length >= 30) return error(socket, 'Xonada ko‘pi bilan 30 ta havola saqlanadi.');
     if (r.links.some(link => link.url === url.href)) return error(socket, 'Bu havola allaqachon ro‘yxatda bor.');
-    const title = typeof p.title === 'string' ? p.title.replace(/[<>]/g, '').replace(/\\s+/g, ' ').trim().slice(0, 80) : '';
+    const title = typeof p.title === 'string' ? p.title.replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) : '';
     const link = { id: crypto.randomBytes(10).toString('hex'), title: title || url.hostname, url: url.href, by: socket.data.name, at: Date.now() };
     r.links.push(link);
     io.to(id).emit('link:shared', link);
