@@ -45,6 +45,24 @@ test('VK Video and OK links are parsed into platform embed players', () => {
   assert.match(server, /if \(type === 'ok'\)/);
 });
 
+test('large movie upload uses acknowledged chunks and byte-range streaming', () => {
+  const server = read('server.js');
+  const app = read('public/app.js');
+  const html = read('public/index.html');
+  const auth = read('auth.js');
+  assert.match(server, /socket\.on\('video:upload:start'/);
+  assert.match(server, /socket\.on\('video:upload:chunk'/);
+  assert.match(server, /socket\.on\('video:upload:end'/);
+  assert.match(server, /Accept-Ranges: 'bytes'/);
+  assert.match(server, /res\.writeHead\(206, headers\)/);
+  assert.match(server, /MAX_VIDEO_UPLOAD_BYTES/);
+  assert.match(app, /file\.slice\(offset,Math\.min\(file\.size,offset\+chunkSize\)\)\.arrayBuffer\(\)/);
+  assert.match(app, /mediaType:'uploaded'/);
+  assert.match(html, /id="movieFileInput"/);
+  assert.match(html, /id="sharedVideosList"/);
+  assert.match(auth, /videos: Array\.isArray\(room\.videos\)/);
+});
+
 test('Rutube video links are parsed into a trusted embed player', () => {
   const app = read('public/app.js');
   const server = read('server.js');
