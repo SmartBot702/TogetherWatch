@@ -410,6 +410,11 @@ async function closeSharedBrowser(room) {
   if (!session) return;
   room.browserSession = null;
   if (session.timer) clearInterval(session.timer);
+  if (session.cdpSession) {
+    try { await session.cdpSession.send('Page.stopScreencast'); } catch (_) {}
+    try { await session.cdpSession.detach(); } catch (_) {}
+    session.cdpSession = null;
+  }
   try { await session.context.close(); } catch (_) {}
   try { await session.browser.close(); } catch (_) {}
   if (room.members && room.members.size) io.to(room.id).emit('browser:closed');
@@ -452,7 +457,7 @@ async function openSharedBrowser(room, rawUrl) {
           return route.continue();
         } catch (_) { return route.abort('blockedbyclient'); }
       });
-      const session = { browser, context, page, timer: null, capturing: false, lastInputAt: 0, inputChain: Promise.resolve(), detectedMedia: new Set() };
+      const session = { browser, context, page, timer: null, capturing: false, lastFrameKey: null, cdpSession: null, screencastActive: false, lastInputAt: 0, inputChain: Promise.resolve(), detectedMedia: new Set() };
       room.browserSession = session;
       page.on('close', () => { if (room.browserSession === session) closeSharedBrowser(room).catch(() => {}); });
       page.on('framenavigated', frame => {
@@ -480,8 +485,30 @@ async function openSharedBrowser(room, rawUrl) {
           }).catch(() => {});
         } catch (_) {}
       });
-      session.timer = setInterval(() => captureSharedBrowser(room, session), 1000);
-      if (session.timer.unref) session.timer.unref();
+      // Prefer Chromium's CDP screencast so active pages refresh several times per second.
+      // Keep the low-rate screenshot loop as a fallback for compatible remote Chromium services.
+      try {
+        const cdpSession = await context.newCDPSession(page);
+        await cdpSession.send('Page.startScreencast', { format: 'jpeg', quality: 45, maxWidth: 960, maxHeight: 600, everyNthFrame: 2 });
+        session.cdpSession = cdpSession;
+        session.screencastActive = true;
+        cdpSession.on('Page.screencastFrame', async event => {
+          try {
+            if (room.browserSession !== session || !room.members.size) return;
+            io.to(room.id).emit('browser:frame', { data: 'data:image/jpeg;base64,' + event.data, url: page.url(), at: Date.now() });
+          } finally {
+            try { await cdpSession.send('Page.screencastFrameAck', { sessionId: event.sessionId }); } catch (_) {}
+          }
+        });
+      } catch (_) {
+        if (session.cdpSession) { try { await session.cdpSession.detach(); } catch (_) {} }
+        session.cdpSession = null;
+        session.screencastActive = false;
+      }
+      if (!session.screencastActive) {
+        session.timer = setInterval(() => captureSharedBrowser(room, session), 1000);
+        if (session.timer.unref) session.timer.unref();
+      }
       await page.goto(url.href, { waitUntil: 'domcontentloaded', timeout: 25000 });
       await captureSharedBrowser(room, session);
       io.to(room.id).emit('browser:started', { url: page.url() });
