@@ -34,6 +34,17 @@ test('watch-party core controls and client handlers exist', () => {
   }
 });
 
+test('VK Video and OK links are parsed into platform embed players', () => {
+  const app = read('public/app.js');
+  const server = read('server.js');
+  assert.match(app, /mediaType:'vk',mediaId,mediaUrl:'https:\/\/vk\.com\/video_ext\.php/);
+  assert.match(app, /mediaType:'ok',mediaId:match\[1\],mediaUrl:'https:\/\/ok\.ru\/videoembed\//);
+  assert.match(app, /next\.mediaType==='vk'\|\|next\.mediaType==='ok'/);
+  assert.match(app, /frame\.title=next\.mediaType==='vk'\?'VK Video':'OK video'/);
+  assert.match(server, /if \(type === 'vk'\)/);
+  assert.match(server, /if \(type === 'ok'\)/);
+});
+
 test('all supported video players advance the queue at most once per ended media item', () => {
   const app = read('public/app.js');
   assert.match(app, /function advanceQueueOnEnded\(\)/);
