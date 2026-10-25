@@ -191,6 +191,7 @@ class NativeScreenShareService : Service() {
                     socket?.emit("rtc:ice", JSONObject().put("to", peerId).put("kind", "screen").put("candidate", json))
                 }
             }
+            override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>?) {}
             override fun onSignalingChange(state: PeerConnection.SignalingState?) {}
             override fun onIceConnectionChange(state: PeerConnection.IceConnectionState?) {}
             override fun onIceConnectionReceivingChange(receiving: Boolean) {}
