@@ -150,6 +150,13 @@ test('two clients share a room, activity selection, and chat in realtime', async
     const activity = await activityPromise;
     assert.equal(activity.activity, 'board');
 
+    observer = connect(url, { transports: ['websocket'], reconnection: false, timeout: 5000 });
+    await waitForEvent(observer, 'connect');
+    const observerJoinedPromise = waitForEvent(observer, 'room:joined');
+    observer.emit('room:join', { roomId: hostRoom.roomId, name: 'ObserverTest' });
+    const observerRoom = await observerJoinedPromise;
+    assert.equal(observerRoom.activeActivity, 'board', 'new members should receive the room’s current shared section');
+
     const chatPromise = waitForEvent(guest, 'chat:message');
     host.emit('chat:send', { text: 'integration-test-message' });
     const message = await chatPromise;
@@ -182,6 +189,7 @@ test('two clients share a room, activity selection, and chat in realtime', async
   } finally {
     if (host) host.disconnect();
     if (guest) guest.disconnect();
+    if (observer) observer.disconnect();
     if (child.exitCode === null) {
       child.kill('SIGTERM');
       await new Promise(resolve => {
