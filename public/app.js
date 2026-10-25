@@ -23,14 +23,14 @@ socket.on('room:joined',d=>{
   roomId=d.roomId;isHost=d.isHost;siteUrl=d.siteUrl||null;siteExpanded=Boolean(d.siteExpanded);screenOwner=d.screenOwner||null;renderSharedSite(siteUrl,siteExpanded);
   $('entry').classList.add('hidden');$('how').classList.add('hidden');$('workspace').classList.remove('hidden');
   $('roomCode').textContent=roomId;$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
-  $('loadVideo').disabled=!isHost;$('youtubeUrl').disabled=!isHost;$('mediaType').disabled=!isHost;$('screenShare').disabled=!!screenOwner&&screenOwner!==socket.id;$('chat').innerHTML='';
+  $('loadVideo').disabled=false;$('youtubeUrl').disabled=false;$('mediaType').disabled=false;$('screenShare').disabled=!!screenOwner&&screenOwner!==socket.id;$('chat').innerHTML='';
   history.replaceState({},'',location.pathname+'?room='+roomId);
   if(d.state&&(d.state.mediaType||d.state.videoId))loadMedia(normalizeState(d.state),d.state);
 });
 socket.on('room:role',d=>{
   isHost=d.isHost;$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
-  $('loadVideo').disabled=!isHost;$('youtubeUrl').disabled=!isHost;$('mediaType').disabled=!isHost;$('screenShare').disabled=!!screenOwner&&screenOwner!==socket.id;
-  ['playPause','back','forward'].forEach(id=>$(id).disabled=!isHost||!playerReady);
+  $('loadVideo').disabled=false;$('youtubeUrl').disabled=false;$('mediaType').disabled=false;$('screenShare').disabled=!!screenOwner&&screenOwner!==socket.id;
+  ['playPause','back','forward'].forEach(id=>$(id).disabled=!playerReady);
 });
 socket.on('room:people',list=>{
   roomPeople=list;
@@ -121,7 +121,7 @@ function destroyPlayer(){
 }
 function markReady(state){
   playerReady=true;
-  ['playPause','back','forward'].forEach(k=>$(k).disabled=!isHost);
+  ['playPause','back','forward'].forEach(k=>$(k).disabled=false);
   $('placeholder').classList.add('hidden');
   $('playState').textContent='Tayyor';
   if(state)applyState(state);
@@ -135,7 +135,7 @@ function loadMedia(next,state){
     const el=document.createElement('div');el.id='ytPlayer';$('player').append(el);
     player=new YT.Player('ytPlayer',{videoId:next.mediaId,playerVars:{playsinline:1,rel:0,controls:0,disablekb:1,origin:location.origin},events:{
       onReady:()=>markReady(state),
-      onStateChange:e=>{if(remote||Date.now()<remoteUntil||!isHost)return;if(e.data===YT.PlayerState.PLAYING||e.data===YT.PlayerState.PAUSED)emitPlayback(e.data===YT.PlayerState.PLAYING,getTime())},
+      onStateChange:e=>{if(remote||Date.now()<remoteUntil)return;if(e.data===YT.PlayerState.PLAYING||e.data===YT.PlayerState.PAUSED)emitPlayback(e.data===YT.PlayerState.PLAYING,getTime())},
       onError:()=>{$('videoError').textContent='YouTube videosini ochib bo‘lmadi.'}
     }});
   }else if(next.mediaType==='vimeo'){
@@ -143,8 +143,8 @@ function loadMedia(next,state){
     const init=()=>{if(!window.Vimeo||!window.Vimeo.Player){setTimeout(init,150);return}
       player=new Vimeo.Player(frame);
       player.ready().then(()=>markReady(state)).catch(()=>{$('videoError').textContent='Vimeo videosini ochib bo‘lmadi yoki video maxfiy.'});
-      player.on('play',()=>{if(!remote&&Date.now()>=remoteUntil&&isHost)getTimeAsync().then(t=>emitPlayback(true,t))});
-      player.on('pause',()=>{if(!remote&&Date.now()>=remoteUntil&&isHost)getTimeAsync().then(t=>emitPlayback(false,t))});
+      player.on('play',()=>{if(!remote&&Date.now()>=remoteUntil)getTimeAsync().then(t=>emitPlayback(true,t))});
+      player.on('pause',()=>{if(!remote&&Date.now()>=remoteUntil)getTimeAsync().then(t=>emitPlayback(false,t))});
     };init();
   }else if(next.mediaType==='file'||next.mediaType==='hls'){
     const video=document.createElement('video');video.id='filePlayer';video.playsInline=true;video.preload='auto';video.controls=false;video.style.width='100%';video.style.height='100%';video.style.position='absolute';video.style.inset='0';if(next.mediaType==='hls')video.crossOrigin='anonymous';$('player').append(video);player=video;
@@ -155,9 +155,9 @@ function loadMedia(next,state){
       hlsInstance.on(Hls.Events.ERROR,(_event,data)=>{if(data&&data.fatal)$('videoError').textContent='HLS oqimini ochib bo‘lmadi. Sayt CORS yoki maxsus token talab qilishi mumkin.'});
     }else{video.src=next.mediaUrl;video.addEventListener('loadedmetadata',ready,{once:true})}
     video.addEventListener('error',()=>{$('videoError').textContent='Videoni ochib bo‘lmadi. Havola ochiq bo‘lishi va sayt CORS orqali ijroga ruxsat berishi kerak.'});
-    video.addEventListener('play',()=>{if(!remote&&Date.now()>=remoteUntil&&isHost)emitPlayback(true,video.currentTime)});
-    video.addEventListener('pause',()=>{if(!remote&&Date.now()>=remoteUntil&&isHost&&!video.ended)emitPlayback(false,video.currentTime)});
-    video.addEventListener('seeked',()=>{if(!remote&&Date.now()>=remoteUntil&&isHost)emitPlayback(!video.paused,video.currentTime)});
+    video.addEventListener('play',()=>{if(!remote&&Date.now()>=remoteUntil)emitPlayback(true,video.currentTime)});
+    video.addEventListener('pause',()=>{if(!remote&&Date.now()>=remoteUntil&&!video.ended)emitPlayback(false,video.currentTime)});
+    video.addEventListener('seeked',()=>{if(!remote&&Date.now()>=remoteUntil)emitPlayback(!video.paused,video.currentTime)});
   }
 }
 function getTime(){
@@ -175,7 +175,7 @@ async function isPlaying(){
   return false;
 }
 function emitPlayback(playing,time){
-  if(!media||!roomId||!isHost)return;
+  if(!media||!roomId)return;
   socket.emit('video:state',{mediaType:media.mediaType,mediaId:media.mediaId,mediaUrl:media.mediaUrl,videoId:media.videoId,isPlaying:!!playing,currentTime:Math.max(0,Number(time)||0)});
 }
 async function seekTo(t){
@@ -209,18 +209,18 @@ $('loadVideo').onclick=async()=>{
     if(result.ok&&result.mediaUrl){const found={mediaType:result.mediaType,mediaId:result.mediaUrl,mediaUrl:result.mediaUrl,videoId:null};$('videoError').textContent='Video havolasi topildi. Hamma uchun ulanyapti…';socket.emit('video:load',found);return}
     socket.emit('site:share',{url:u.href});$('videoError').textContent='Sayt xona ichida ochildi, lekin ochiq video oqimi avtomatik topilmadi. Bu saytda DRM, CORS yoki yashirin player bo‘lishi mumkin — ekran ulashishdan foydalaning.';$('playState').textContent='Sayt ochildi';
   }catch(e){socket.emit('site:share',{url:u.href});$('videoError').textContent='Sayt ulashildi. Video oqimini avtomatik olish imkoni bo‘lmadi; ekran ulashish yordam beradi.'}
-  finally{$('loadVideo').disabled=!isHost}
+  finally{$('loadVideo').disabled=false}
 };
 socket.on('video:loaded',s=>{const next=normalizeState(s);if(next)loadMedia(next,s)});
 socket.on('video:state',s=>{const next=normalizeState(s);if(next&&(!media||next.mediaType!==media.mediaType||next.mediaId!==media.mediaId))loadMedia(next,s);else applyState(s)});
 $('playPause').onclick=async()=>{
-  if(!playerReady||!isHost)return;
+  if(!playerReady)return;
   const playing=await isPlaying(),t=await getTimeAsync();
   if(playing)await pause();else await play();
   emitPlayback(!playing,t);
 };
 async function seek(d){
-  if(!playerReady||!isHost)return;
+  if(!playerReady)return;
   const t=Math.max(0,(await getTimeAsync())+d);
   await seekTo(t);emitPlayback(await isPlaying(),t);
 }

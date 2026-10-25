@@ -222,7 +222,7 @@ io.on('connection', socket => {
   });
   socket.on('video:load', p => {
     const id = socket.data.roomId, r = rooms.get(id);
-    if (!r || r.hostId !== socket.id) return error(socket, 'Videoni faqat xona egasi almashtira oladi.');
+    if (!r || !r.members.has(socket.id)) return error(socket, 'Avval tomosha xonasiga kiring.');
     const media = normalizeMedia(p);
     if (!media) return error(socket, 'YouTube, Vimeo yoki to‘g‘ridan-to‘g‘ri MP4/WebM havolasini kiriting.');
     r.state = { ...media, isPlaying: false, currentTime: 0, updatedAt: Date.now() };
@@ -230,7 +230,7 @@ io.on('connection', socket => {
   });
   function playback(p) {
     const id = socket.data.roomId, r = rooms.get(id);
-    if (!r || r.hostId !== socket.id || !r.state.mediaType || !p) return;
+    if (!r || !r.members.has(socket.id) || !r.state.mediaType || !p) return;
     const type = p.mediaType || (p.videoId ? 'youtube' : '');
     const idValue = p.mediaId || p.videoId || p.mediaUrl;
     const expected = r.state.mediaId || r.state.mediaUrl;
