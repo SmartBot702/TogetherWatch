@@ -149,7 +149,8 @@ socket.on('site:shared',d=>{if(d&&d.url)renderSharedSite(d.url,d.expanded)});
 const sharedBrowserStage=$('sharedBrowserStage'), sharedBrowserImage=$('sharedBrowserImage');
 let browserFrameWidth=1280,browserFrameHeight=800,lastBrowserMove=0;
 function startSharedBrowser(){const url=$('sharedBrowserUrl').value.trim();if(!url){$('sharedBrowserStatus').textContent='Sayt manzilini kiriting.';return}$('sharedBrowserStatus').textContent='Umumiy brauzer ishga tushmoqda…';socket.emit('browser:start',{url})}
-$('startSharedBrowser').onclick=startSharedBrowser;\n$('sharedBrowserUrl').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();startSharedBrowser()}});
+$('startSharedBrowser').onclick=startSharedBrowser;
+$('sharedBrowserUrl').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();startSharedBrowser()}});
 $('browserBack').onclick=()=>socket.emit('browser:back');
 $('browserForward').onclick=()=>socket.emit('browser:forward');
 $('browserReload').onclick=()=>socket.emit('browser:reload');
