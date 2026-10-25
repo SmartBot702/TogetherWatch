@@ -235,7 +235,7 @@ function enter(socket, id, name, create, options = {}) {
   if (!name) return error(socket, 'Ismingizni kiriting.');
   let r = rooms.get(id);
   if (r && !r.members.size && r.emptyAt && Date.now() - r.emptyAt > 6 * 60 * 60 * 1000) { discardRoom(id); r = null; }
-  if (!r && create) { r = { id, hostId: socket.id, members: new Map(), callReady: new Set(), state: emptyState(), queue: [], messages: [], siteUrl: null, siteExpanded: false, screenOwner: null, browserSession: null, title: cleanRoomTitle(options.title) || 'Tomosha xonasi', theme: cleanRoomTheme(options.theme), isPublic: Boolean(options.isPublic), game: { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 }, boardStrokes: [] }; rooms.set(id, r); }
+  if (!r && create) { r = { id, hostId: socket.id, members: new Map(), callReady: new Set(), state: emptyState(), queue: [], messages: [], siteUrl: null, siteExpanded: false, screenOwner: null, browserSession: null, activeActivity: 'video', title: cleanRoomTitle(options.title) || 'Tomosha xonasi', theme: cleanRoomTheme(options.theme), isPublic: Boolean(options.isPublic), game: { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 }, boardStrokes: [] }; rooms.set(id, r); }
   if (!r.title) r.title = 'Tomosha xonasi';
   if (!r.theme) r.theme = 'violet';
   if (r && !Array.isArray(r.messages)) r.messages = [];
@@ -248,7 +248,7 @@ function enter(socket, id, name, create, options = {}) {
   socket.data.roomId = id;
   socket.data.name = name;
   r.members.set(socket.id, { id: socket.id, name });
-  socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, title: r.title, theme: r.theme, state: r.state, queue: r.queue || [], chatHistory: r.messages.slice(-100), siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner, isPublic: Boolean(r.isPublic), game: r.game || { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 } });
+  socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, title: r.title, theme: r.theme, state: r.state, queue: r.queue || [], chatHistory: r.messages.slice(-100), siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner, isPublic: Boolean(r.isPublic), activeActivity: r.activeActivity || 'video', game: r.game || { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 } });
   for (const file of (r.files || [])) socket.emit('file:shared', file);
   for (const link of (r.links || [])) socket.emit('link:shared', link);
   socket.emit('board:history', Array.isArray(r.boardStrokes) ? r.boardStrokes.slice(-2000) : []);
@@ -385,6 +385,16 @@ io.on('connection', socket => {
     const id = String(p && p.roomId || '').toUpperCase();
     if (!/^[A-Z0-9]{6}$/.test(id)) return error(socket, 'Xona kodi noto‘g‘ri.');
     enter(socket, id, cleanName(p && p.name), false);
+  });
+
+  socket.on('activity:launch', p => {
+    const id = socket.data.roomId, room = rooms.get(id);
+    const allowed = new Set(['video','site','games','board','files','screen','call','people']);
+    const activity = p && typeof p.activity === 'string' ? p.activity : '';
+    if (!room || !room.members.has(socket.id) || !allowed.has(activity)) return;
+    room.activeActivity = activity;
+    io.to(id).emit('activity:launched', { activity, by: socket.data.name });
+    persistRoom(room);
   });
 
   socket.on('browser:start', async p => {
