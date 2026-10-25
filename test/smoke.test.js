@@ -34,6 +34,12 @@ test('watch-party core controls and client handlers exist', () => {
   }
 });
 
+test('WebRTC client bounds pending ICE candidates before remote description', () => {
+  const app = read('public/app.js');
+  assert.match(app, /if\(q\.length>=128\)q\.shift\(\)/);
+  assert.match(app, /candidate\.candidate\.length>4096/);
+});
+
 test('server exposes health, public rooms, RTC config, and shared activities', () => {
   const server = read('server.js');
   for (const route of ["app.get('/health'", "app.get('/api/rooms/public'", "app.get('/api/rtc-config'"]) {
