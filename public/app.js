@@ -15,6 +15,17 @@ socket.on('disconnect',()=>{
   for(const id of Array.from(callPeers.keys()))removeCallPeer(id);
   callReady.clear();
 });
+
+let activeRoomTab='video';
+function setRoomTab(tab){
+  const allowed=new Set(['video','site','games','files','screen','call','people']);
+  activeRoomTab=allowed.has(tab)?tab:'video';
+  document.querySelectorAll('[data-room-tab]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.roomTab===activeRoomTab)));
+  document.querySelectorAll('[data-room-section]').forEach(section=>{section.hidden=section.dataset.roomSection!==activeRoomTab});
+}
+document.querySelectorAll('[data-room-tab]').forEach(button=>button.addEventListener('click',()=>setRoomTab(button.dataset.roomTab)));
+setRoomTab('video');
+
 function name(){return $('nickname').value.trim().replace(/[<>]/g,'').slice(0,24)}
 function enter(kind){
   myName=name();
@@ -30,7 +41,7 @@ $('joinRoom').onclick=()=>{
 $('roomInput').oninput=e=>e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
 socket.on('room:error',m=>{$('entryError').textContent=m;$('videoError').textContent=m;$('fileShareStatus').textContent=m});
 socket.on('room:joined',d=>{
-  roomId=d.roomId;isHost=d.isHost;setSection('watch');$('publicRoomsPanel').classList.add('hidden');$('activityHub').classList.add('hidden');renderGame(d.game);applyRoomSettings(d.title||'Tomosha xonasi',d.theme||'violet',isHost);siteUrl=d.siteUrl||null;siteExpanded=Boolean(d.siteExpanded);screenOwner=d.screenOwner||null;renderSharedSite(siteUrl,siteExpanded);
+  roomId=d.roomId;isHost=d.isHost;setRoomTab('video');setSection('watch');$('publicRoomsPanel').classList.add('hidden');$('activityHub').classList.add('hidden');renderGame(d.game);applyRoomSettings(d.title||'Tomosha xonasi',d.theme||'violet',isHost);siteUrl=d.siteUrl||null;siteExpanded=Boolean(d.siteExpanded);screenOwner=d.screenOwner||null;renderSharedSite(siteUrl,siteExpanded);
   $('entry').classList.add('hidden');$('how').classList.add('hidden');$('workspace').classList.remove('hidden');
   $('roomCode').textContent=roomId;$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
   $('loadVideo').disabled=false;$('youtubeUrl').disabled=false;$('mediaType').disabled=false;$('screenShare').disabled=!!screenOwner&&screenOwner!==socket.id;$('chat').replaceChildren();
@@ -162,7 +173,7 @@ $('leaveRoom').onclick=()=>{
   for(const id of Array.from(peers.keys()))removePeer(id);
   for(const id of Array.from(callPeers.keys()))removeCallPeer(id);
   socket.emit('room:leave');destroyPlayer();roomId=null;history.replaceState({},'',location.pathname);
-  renderGame({board:Array(9).fill(null),turn:'X',winner:null,moves:0});sharedFileIds.clear();$('sharedFilesList').replaceChildren();$('fileShareStatus').textContent='Bir fayl 450 KB gacha. Fayllar joriy xonada vaqtincha saqlanadi.';$('roomFileInput').value='';setSection(activeSection);refreshPublicRooms();document.body.dataset.roomTheme='violet';
+  renderGame({board:Array(9).fill(null),turn:'X',winner:null,moves:0});setRoomTab('video');sharedFileIds.clear();$('sharedFilesList').replaceChildren();$('fileShareStatus').textContent='Bir fayl 450 KB gacha. Fayllar joriy xonada vaqtincha saqlanadi.';$('roomFileInput').value='';setSection(activeSection);refreshPublicRooms();document.body.dataset.roomTheme='violet';
 };
 
 let gameState={board:Array(9).fill(null),turn:'X',winner:null,moves:0};
