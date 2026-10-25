@@ -1,6 +1,6 @@
 # Umumiy masofaviy brauzer
 
-Xonadagi Umumiy brauzer — bitta masofaviy Chromium sahifasi. Barcha ishtirokchilar bir xil sahifani ko‘radi; bosish, yozish, aylantirish va navigatsiya umumiy sessiyaga ta’sir qiladi. Tasvirlar taxminan sekundiga bir marta yangilanadi, bu yuqori FPS video oqimi emas.
+Xonadagi Umumiy brauzer — bitta masofaviy Chromium sahifasi. Barcha ishtirokchilar bir xil sahifani ko‘radi; bosish, yozish, aylantirish va navigatsiya umumiy sessiyaga ta’sir qiladi. Tasvirlar taxminan sekundiga bir marta tekshiriladi; sahifa o‘zgarmagan bo‘lsa, bir xil kadr qayta uzatilmaydi. Bu yuqori FPS video oqimi emas va statik sahifalarda trafikni kamaytiradi.
 
 ## To‘liq stackni ishga tushirish
 
