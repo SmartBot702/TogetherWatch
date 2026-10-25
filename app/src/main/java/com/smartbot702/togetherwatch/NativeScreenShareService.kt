@@ -8,6 +8,7 @@ import android.content.Intent
 import android.media.projection.MediaProjection
 import android.os.Build
 import android.os.IBinder
+import android.content.pm.ServiceInfo
 import io.socket.client.IO
 import io.socket.client.Socket
 import org.json.JSONObject
@@ -59,7 +60,11 @@ class NativeScreenShareService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        startForeground(NOTIFICATION_ID, notification("TogetherWatch ekran uzatmoqda"))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, notification("TogetherWatch ekran uzatmoqda"), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+        } else {
+            startForeground(NOTIFICATION_ID, notification("TogetherWatch ekran uzatmoqda"))
+        }
         started = true
         try {
             initializeWebRtc()
