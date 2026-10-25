@@ -17,6 +17,8 @@ jobs:
       - run: node --check auth.js
       - run: node --check public/app.js
       - run: node --check public/i18n.js
+      - name: Validate Docker Compose configuration
+        run: BROWSER_TOKEN=ci-browser-token POSTGRES_PASSWORD=ci-postgres-password docker compose config --quiet
       - name: Smoke test HTTP server
         run: |
           npm start > /tmp/togetherwatch.log 2>&1 &
