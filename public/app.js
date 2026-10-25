@@ -85,12 +85,25 @@ function scroll(){$('chat').scrollTop=$('chat').scrollHeight}
 socket.on('room:system',system);
 socket.on('activity:launched',d=>{if(!d||!d.activity)return;setRoomTab(d.activity);const status=$('sharedActivityStatus');if(status)status.textContent=(d.by||'Ishtirokchi')+' «'+(activityLabels[d.activity]||'Faoliyat')+'» bo‘limini hamma uchun ochdi.';});
 function renderChatMessage(m){
-  const e=document.createElement('div');e.className='message';
+  const e=document.createElement('div');e.className='message';if(m.id)e.dataset.messageId=m.id;
   const header=document.createElement('div');header.className='message-header';
   const b=document.createElement('b');b.textContent=m.name;
-  const time=document.createElement('time');time.className='message-time';time.dateTime=new Date(Number(m.at)||Date.now()).toISOString();time.textContent=new Date(Number(m.at)||Date.now()).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  const time=document.createElement('time');time.className='message-time';time.dateTime=new Date(Number(m.at)||Date.now()).toISOString();time.textContent=new Date(Number(m.at)||Date.now()).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+(m.editedAt?' · tahrirlangan':'');
   header.append(b,time);
-  const p=document.createElement('p');p.textContent=m.text;e.append(header,p);$('chat').append(e);
+  const p=document.createElement('p');p.textContent=m.text;e.append(header,p);
+  if(m.id&&m.byId===socket.id){
+    const actions=document.createElement('div');actions.className='row';actions.style.marginTop='6px';
+    const edit=document.createElement('button');edit.type='button';edit.className='btn';edit.textContent='Tahrirlash';edit.style.padding='4px 8px';edit.onclick=()=>{
+      const next=window.prompt('Xabarni tahrirlash:',m.text);if(next===null)return;
+      if(!next.trim()){window.alert('Xabar bo‘sh bo‘lishi mumkin emas.');return}
+      socket.emit('chat:edit',{id:m.id,text:next.trim()});
+    };
+    const del=document.createElement('button');del.type='button';del.className='btn';del.textContent='O‘chirish';del.style.padding='4px 8px';del.onclick=()=>{
+      if(window.confirm('Ushbu xabarni hamma uchun o‘chirasizmi?'))socket.emit('chat:delete',{id:m.id});
+    };
+    actions.append(edit,del);e.append(actions);
+  }
+  $('chat').append(e);
 }
 const typingUsers=new Map(),typingTimers=new Map();
 function renderTyping(){const names=Array.from(typingUsers.values());$('typingIndicator').textContent=names.length?names.join(', ')+' yozmoqda…':''}
@@ -113,6 +126,17 @@ $('chatText').addEventListener('input',()=>{
   typingStopTimer=setTimeout(()=>{if(roomId)socket.emit('chat:typing',{typing:false})},1100);
 });
 socket.on('chat:message',m=>{renderChatMessage(m);scroll()});
+socket.on('chat:message:updated',m=>{
+  if(!m||!m.id)return;
+  const old=document.querySelector('[data-message-id="'+CSS.escape(m.id)+'"]');
+  if(old)old.remove();
+  renderChatMessage(m);scroll();
+});
+socket.on('chat:message:deleted',d=>{
+  if(!d||!d.id)return;
+  const old=document.querySelector('[data-message-id="'+CSS.escape(d.id)+'"]');
+  if(old)old.remove();
+});
 $('chatForm').onsubmit=e=>{e.preventDefault();const text=$('chatText').value.trim();if(text&&roomId){socket.emit('chat:send',{text});socket.emit('chat:typing',{typing:false});$('chatText').value='';clearTimeout(typingStopTimer)}};
 let renderedSiteUrl=null;
 $('openSite').textContent='Brauzerda ochish';
