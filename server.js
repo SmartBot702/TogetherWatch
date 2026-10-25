@@ -340,8 +340,8 @@ function browserInput(room, socket, payload) {
       const x = Number(p.x), y = Number(p.y);
       if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > BROWSER_VIEWPORT.width || y > BROWSER_VIEWPORT.height) return;
       if (p.type === 'move') await session.page.mouse.move(x, y);
-      else if (p.type === 'down') await session.page.mouse.down({ button: p.button === 'right' ? 'right' : 'left' });
-      else if (p.type === 'up') await session.page.mouse.up({ button: p.button === 'right' ? 'right' : 'left' });
+      else if (p.type === 'down') { await session.page.mouse.move(x, y); await session.page.mouse.down({ button: p.button === 'right' ? 'right' : 'left' }); }
+      else if (p.type === 'up') { await session.page.mouse.move(x, y); await session.page.mouse.up({ button: p.button === 'right' ? 'right' : 'left' }); }
       else await session.page.mouse.click(x, y, { button: p.button === 'right' ? 'right' : 'left' });
     } else if (p.type === 'wheel') {
       const dx = Number(p.dx), dy = Number(p.dy);
