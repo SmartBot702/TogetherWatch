@@ -662,16 +662,20 @@ async function loadMessages(force){
     if(force)$('dmError').textContent='';
   }catch(e){$('dmError').textContent=e.message||'Xabarlar yuklanmadi.'}
 }
-$('dmForm').onsubmit=async e=>{
+socket.on('dm:message',message=>{
+  if(!currentAccount||!message)return;
+  const belongsToOpenChat=activeChatUserId&&((message.from===currentAccount.id&&message.to===activeChatUserId)||(message.from===activeChatUserId&&message.to===currentAccount.id));
+  if(belongsToOpenChat){lastMessageSignature='';loadMessages(false)}
+  else if(message.to===currentAccount.id){$('dmStatus').textContent='Yangi xabar';}
+});
+$('dmForm').onsubmit=e=>{
   e.preventDefault();
-  const text=$('dmInput').value.trim();if(!text||!activeChatUserId)return;
-  $('dmSend').disabled=true;
-  try{
-    const r=await fetch('/api/messages/'+encodeURIComponent(activeChatUserId),{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({text})});
-    const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Xabar yuborilmadi.');
-    $('dmInput').value='';lastMessageSignature='';await loadMessages(true);
-  }catch(e){$('dmError').textContent=e.message||'Xabar yuborilmadi.'}
-  finally{$('dmSend').disabled=!activeChatUserId}
+  const text=$('dmInput').value.trim();if(!text||!activeChatUserId||!currentAccount)return;
+  $('dmSend').disabled=true;$('dmError').textContent='';
+  socket.emit('dm:send',{to:activeChatUserId,text},result=>{
+    if(!result||!result.ok){$('dmError').textContent=result&&result.error?result.error:'Xabar yuborilmadi.';$('dmSend').disabled=false;return}
+    $('dmInput').value='';$('dmSend').disabled=false;
+  });
 }
 function showAccount(user){
   currentAccount=user||null;
@@ -708,12 +712,12 @@ $('authForm').onsubmit=async e=>{
   try{
     const response=await fetch('/api/auth/'+(authMode==='register'?'register':'login'),{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(payload)});
     const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Xatolik yuz berdi.');
-    showAccount(data.user);$('authPassword').value='';$('authMessage').textContent='';setSection('home');
+    showAccount(data.user);socket.disconnect();socket.connect();$('authPassword').value='';$('authMessage').textContent='';setSection('home');
   }catch(err){$('authMessage').textContent=err.message||'Serverga ulanib bo‘lmadi.'}
 };
 $('logoutButton').onclick=async()=>{
   await fetch('/api/auth/logout',{method:'POST',credentials:'same-origin'}).catch(()=>{});
-  showAccount(null);activeChatUserId=null;activeChatUser=null;$('dmInput').disabled=true;$('dmSend').disabled=true;$('dmTitle').textContent='Shaxsiy xabarlar';$('dmSubtitle').textContent='Suhbatni boshlash uchun do‘st tanlang.';$('dmMessages').replaceChildren();setAuthMode('login');$('authMessage').textContent='Akkauntdan chiqildi.';
+  showAccount(null);socket.disconnect();socket.connect();activeChatUserId=null;activeChatUser=null;$('dmInput').disabled=true;$('dmSend').disabled=true;$('dmTitle').textContent='Shaxsiy xabarlar';$('dmSubtitle').textContent='Suhbatni boshlash uchun do‘st tanlang.';$('dmMessages').replaceChildren();setAuthMode('login');$('authMessage').textContent='Akkauntdan chiqildi.';
 };
 $('saveProfile').onclick=async()=>{
   $('authMessage').textContent='Saqlanmoqda…';
@@ -738,7 +742,7 @@ $('searchUsers').onclick=async()=>{
 };
 $('userSearch').addEventListener('keydown',e=>{if(e.key==='Enter')$('searchUsers').click()});
 loadAccount();
-setInterval(()=>{if(currentAccount&&activeChatUserId&&activeSection==='friends')loadMessages(false)},3000);
+setInterval(()=>{if(currentAccount&&activeChatUserId&&activeSection==='friends')loadMessages(false)},15000);
 
 const r=new URLSearchParams(location.search).get('room');if(r)$('roomInput').value=r.toUpperCase();
 $('year').textContent=new Date().getFullYear();
