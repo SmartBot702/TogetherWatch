@@ -6,13 +6,13 @@ const scrypt = promisify(crypto.scrypt);
 
 const dataDir = process.env.DATA_DIR || path.join(__dirname, '.data');
 const dataFile = path.join(dataDir, 'accounts.json');
-let state = { users: [], sessions: {} };
+let state = { users: [], sessions: {}, friendRequests: [], friends: [] };
 let writeQueue = Promise.resolve();
 
 async function load() {
   try {
     const parsed = JSON.parse(await fs.promises.readFile(dataFile, 'utf8'));
-    state = { users: Array.isArray(parsed.users) ? parsed.users : [], sessions: parsed.sessions || {} };
+    state = { users: Array.isArray(parsed.users) ? parsed.users : [], sessions: parsed.sessions || {}, friendRequests: Array.isArray(parsed.friendRequests) ? parsed.friendRequests : [], friends: Array.isArray(parsed.friends) ? parsed.friends : [] };
   } catch (e) {
     if (e.code !== 'ENOENT') console.error('Account store read failed:', e.message);
     await save();
@@ -114,6 +114,38 @@ async function attach(app) {
     if (q.length < 2) return res.json({ ok: true, users: [] });
     const users = state.users.filter(u => u.id !== user.id && (u.username.includes(q) || u.displayName.toLowerCase().includes(q))).slice(0, 20).map(publicUser);
     res.json({ ok: true, users });
+  });
+  app.get('/api/friends', (req, res) => {
+    const user = currentUser(req);
+    if (!user) return fail(res, 401, 'Avval akkauntga kiring.');
+    const friends = state.friends.filter(r => r.users.includes(user.id)).map(r => state.users.find(u => u.id === r.users.find(id => id !== user.id))).filter(Boolean).map(publicUser);
+    const incoming = state.friendRequests.filter(r => r.to === user.id && r.status === 'pending').map(r => ({ id: r.id, user: publicUser(state.users.find(u => u.id === r.from)) })).filter(r => r.user);
+    res.json({ ok: true, friends, incoming: incoming.map(r => ({ id: r.id, user: r.user })) });
+  });
+  app.post('/api/friends/request', async (req, res) => {
+    const user = currentUser(req);
+    if (!user) return fail(res, 401, 'Avval akkauntga kiring.');
+    const username = clean(req.body && req.body.username, 24).toLowerCase();
+    const target = state.users.find(u => u.username === username);
+    if (!target || target.id === user.id) return fail(res, 404, 'Foydalanuvchi topilmadi.');
+    if (state.friends.some(r => r.users.includes(user.id) && r.users.includes(target.id))) return fail(res, 409, 'Siz allaqachon do‘stsiz.');
+    if (state.friendRequests.some(r => r.status === 'pending' && ((r.from === user.id && r.to === target.id) || (r.from === target.id && r.to === user.id)))) return fail(res, 409, 'Do‘stlik so‘rovi allaqachon mavjud.');
+    state.friendRequests.push({ id: crypto.randomUUID(), from: user.id, to: target.id, status: 'pending', createdAt: Date.now() });
+    await save();
+    res.status(201).json({ ok: true });
+  });
+  app.post('/api/friends/respond', async (req, res) => {
+    const user = currentUser(req);
+    if (!user) return fail(res, 401, 'Avval akkauntga kiring.');
+    const requestId = clean(req.body && req.body.requestId, 64);
+    const accept = Boolean(req.body && req.body.accept);
+    const request = state.friendRequests.find(r => r.id === requestId && r.to === user.id && r.status === 'pending');
+    if (!request) return fail(res, 404, 'So‘rov topilmadi yoki avval javob berilgan.');
+    request.status = accept ? 'accepted' : 'rejected';
+    request.respondedAt = Date.now();
+    if (accept && !state.friends.some(r => r.users.includes(user.id) && r.users.includes(request.from))) state.friends.push({ users: [user.id, request.from], createdAt: Date.now() });
+    await save();
+    res.json({ ok: true });
   });
 }
 module.exports = { attach };
