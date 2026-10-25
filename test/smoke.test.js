@@ -203,6 +203,18 @@ test('two clients share a room, activity selection, and chat in realtime', async
     assert.equal(playback.isPlaying, true);
     assert.equal(playback.currentTime, 12);
 
+    // Reject string booleans and string timestamps instead of coercing them.
+    let malformedPlaybackCount = 0;
+    const countMalformedPlayback = () => { malformedPlaybackCount++; };
+    host.on('video:state', countMalformedPlayback);
+    guest.emit('video:state', {
+      mediaType: 'youtube', mediaId: 'dQw4w9WgXcQ',
+      isPlaying: 'false', currentTime: '42'
+    });
+    await new Promise(resolve => setTimeout(resolve, 150));
+    host.off('video:state', countMalformedPlayback);
+    assert.equal(malformedPlaybackCount, 0, 'malformed playback state must not be broadcast');
+
     // A burst of chat messages is capped per participant to prevent room spam.
     let burstMessages = 0;
     const countBurst = message => { if (message.text.startsWith('burst-check-')) burstMessages++; };
