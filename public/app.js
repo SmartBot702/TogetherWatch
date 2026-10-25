@@ -452,6 +452,11 @@ function parseMedia(raw){
       const match=u.pathname.match(/\/video(?:embed)?\/(\d{1,24})/);
       if(match)return{mediaType:'ok',mediaId:match[1],mediaUrl:'https://ok.ru/videoembed/'+match[1],videoId:null};
     }
+    if((host==='rutube.ru'||host==='m.rutube.ru')&&($('mediaType').value==='auto'||$('mediaType').value==='rutube')){
+      const match=u.pathname.match(/\/(?:video|play\/embed)\/([A-Za-z0-9_-]{6,64})/);
+      if(match)return{mediaType:'rutube',mediaId:match[1],mediaUrl:'https://rutube.ru/play/embed/'+match[1],videoId:null};
+    }
+    }
     if(($('mediaType').value==='auto'&&/\.(mp4|webm)$/i.test(u.pathname))||$('mediaType').value==='file')return{mediaType:'file',mediaId:u.href,mediaUrl:u.href,videoId:null};
     if(($('mediaType').value==='auto'||$('mediaType').value==='hls')&&/\.m3u8$/i.test(u.pathname))return{mediaType:'hls',mediaId:u.href,mediaUrl:u.href,videoId:null};
     return null;
@@ -510,11 +515,11 @@ function loadMedia(next,state){
       player.on('pause',()=>{if(!remote&&Date.now()>=remoteUntil)getTimeAsync().then(t=>emitPlayback(false,t))});
        player.on('ended',advanceQueueOnEnded);
     };init();
-  }else if(next.mediaType==='vk'||next.mediaType==='ok'){
+  }else if(next.mediaType==='vk'||next.mediaType==='ok'||next.mediaType==='rutube'){
     const frame=document.createElement('iframe');
-    frame.id=next.mediaType==='vk'?'vkPlayer':'okPlayer';
+    frame.id=next.mediaType==='vk'?'vkPlayer':next.mediaType==='ok'?'okPlayer':'rutubePlayer';
     frame.src=next.mediaUrl;
-    frame.title=next.mediaType==='vk'?'VK Video':'OK video';
+    frame.title=next.mediaType==='vk'?'VK Video':next.mediaType==='ok'?'OK video':'Rutube video';
     frame.allow='autoplay; fullscreen; picture-in-picture; encrypted-media';
     frame.allowFullscreen=true;
     frame.referrerPolicy='no-referrer-when-downgrade';
@@ -526,7 +531,7 @@ function loadMedia(next,state){
     ['videoFullscreen'].forEach(k=>$(k).disabled=false);
     $('playPause').disabled=true;$('back').disabled=true;$('forward').disabled=true;$('muteToggle').disabled=true;$('volume').disabled=true;$('seekRange').disabled=true;
     $('playState').textContent='Platforma playeri';
-    $('videoError').textContent='VK/OK playeri ochildi. Platforma ruxsat bersa, video ko‘rish mumkin. Ularning tashqi playeri sinxron Play/Pause va vaqt boshqaruvini bermagani uchun bu saytlar uchun faqat video ochilishi umumiylashtiriladi.';
+    $('videoError').textContent='Tashqi platforma playeri ochildi. Video platforma ruxsat bersa ko‘rinadi; VK/OK/Rutube tashqi playerlari sinxron Play/Pause va vaqt boshqaruvini ishonchli bermagani uchun bu manbalarda video ochilishi ulashiladi, boshqaruvlar esa platformaning o‘zida qoladi.';
   }else if(next.mediaType==='local'||next.mediaType==='file'||next.mediaType==='hls'){
     if(next.mediaType==='local'&&(!localObjectUrl||localFileId!==next.mediaId)){$('placeholder').classList.remove('hidden');$('playState').textContent='Mahalliy fayl kerak';$('videoError').textContent='Bu xonadagi videoni ko‘rish uchun “Mahalliy video” tugmasini bosib, aynan bir xil faylni tanlang.';$('localVideoHint').textContent='Kerakli fayl: '+next.mediaId+' — fayl nomi, hajmi va sanasi mos bo‘lishi kerak.';return}
     const video=document.createElement('video');video.id='filePlayer';video.playsInline=true;video.preload='auto';video.controls=false;video.style.width='100%';video.style.height='100%';video.style.position='absolute';video.style.inset='0';if(next.mediaType==='hls')video.crossOrigin='anonymous';$('player').append(video);player=video;
