@@ -590,7 +590,8 @@ $('searchUsers').onclick=async()=>{
   }catch(err){$('friendsMessage').textContent=err.message||'Qidiruvda xato.'}
 };
 $('userSearch').addEventListener('keydown',e=>{if(e.key==='Enter')$('searchUsers').click()});
-loadAccount();\nsetInterval(()=>{if(currentAccount&&activeChatUserId&&activeSection==='friends')loadMessages(false)},3000);
+loadAccount();
+setInterval(()=>{if(currentAccount&&activeChatUserId&&activeSection==='friends')loadMessages(false)},3000);
 
 const r=new URLSearchParams(location.search).get('room');if(r)$('roomInput').value=r.toUpperCase();
 $('year').textContent=new Date().getFullYear();
