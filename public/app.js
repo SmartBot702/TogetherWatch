@@ -552,12 +552,14 @@ function destroyPlayer(){
   }
   $('player').replaceChildren();player=null;playerReady=false;media=null;
   $('placeholder').classList.remove('hidden');
-  ['playPause','back','forward','muteToggle','volume','videoFullscreen','seekRange'].forEach(id=>$(id).disabled=true);
+  ['playPause','back','forward','muteToggle','volume','videoFullscreen','seekRange','playbackRate'].forEach(id=>$(id).disabled=true);
   $('seekRange').value='0';$('currentTime').textContent='0:00';$('duration').textContent='0:00';seekDuration=0;seeking=false;
 }
 function markReady(state){
   playerReady=true;
   ['playPause','back','forward','muteToggle','volume','videoFullscreen'].forEach(k=>$(k).disabled=false);
+  $('playbackRate').disabled=!(media&&['youtube','vimeo','file','hls','local'].includes(media.mediaType));
+  applyPlaybackRate();
   $('placeholder').classList.add('hidden');
   $('playState').textContent='Tayyor';
   applyVolume();
@@ -594,7 +596,7 @@ function loadMedia(next,state){
        player.on('ended',advanceQueueOnEnded);
     };init();
   }else if(next.mediaType==='gdrive'){
-    const frame=document.createElement('iframe');frame.id='gdrivePlayer';frame.src=next.mediaUrl;frame.title='Google Drive video';frame.allow='autoplay; fullscreen; picture-in-picture';frame.allowFullscreen=true;frame.referrerPolicy='no-referrer';frame.style.width='100%';frame.style.height='100%';frame.style.position='absolute';frame.style.inset='0';frame.style.border='0';$('player').append(frame);player=frame;playerReady=true;$('placeholder').classList.add('hidden');$('videoFullscreen').disabled=false;$('playPause').disabled=true;$('back').disabled=true;$('forward').disabled=true;$('muteToggle').disabled=true;$('volume').disabled=true;$('seekRange').disabled=true;$('playState').textContent='Google Drive player';$('videoError').textContent='Google Drive videosi ochildi. Ijro uchun fayl egasi “Havolaga ega har kim — Viewer” ruxsatini berishi kerak. Drive playeri tashqi iframe bo‘lgani uchun Play/Pause va vaqt sinxronligi boshqarilmaydi; hamma videoni o‘z oynasida Play bosib boshlashi mumkin.';
+    const frame=document.createElement('iframe');frame.id='gdrivePlayer';frame.src=next.mediaUrl;frame.title='Google Drive video';frame.allow='autoplay; fullscreen; picture-in-picture';frame.allowFullscreen=true;frame.referrerPolicy='no-referrer';frame.style.width='100%';frame.style.height='100%';frame.style.position='absolute';frame.style.inset='0';frame.style.border='0';$('player').append(frame);player=frame;playerReady=true;$('placeholder').classList.add('hidden');$('videoFullscreen').disabled=false;$('playPause').disabled=true;$('back').disabled=true;$('forward').disabled=true;$('muteToggle').disabled=true;$('volume').disabled=true;$('seekRange').disabled=true;$('playbackRate').disabled=true;$('playState').textContent='Google Drive player';$('videoError').textContent='Google Drive videosi ochildi. Ijro uchun fayl egasi “Havolaga ega har kim — Viewer” ruxsatini berishi kerak. Drive playeri tashqi iframe bo‘lgani uchun Play/Pause va vaqt sinxronligi boshqarilmaydi; hamma videoni o‘z oynasida Play bosib boshlashi mumkin.';
   }else if(next.mediaType==='vk'||next.mediaType==='ok'||next.mediaType==='rutube'){
     const frame=document.createElement('iframe');
     frame.id=next.mediaType==='vk'?'vkPlayer':next.mediaType==='ok'?'okPlayer':'rutubePlayer';
@@ -609,7 +611,7 @@ function loadMedia(next,state){
     playerReady=true;
     $('placeholder').classList.add('hidden');
     ['videoFullscreen'].forEach(k=>$(k).disabled=false);
-    $('playPause').disabled=true;$('back').disabled=true;$('forward').disabled=true;$('muteToggle').disabled=true;$('volume').disabled=true;$('seekRange').disabled=true;
+    $('playPause').disabled=true;$('back').disabled=true;$('forward').disabled=true;$('muteToggle').disabled=true;$('volume').disabled=true;$('seekRange').disabled=true;$('playbackRate').disabled=true;
     $('playState').textContent='Platforma playeri';
     $('videoError').textContent='Tashqi platforma playeri ochildi. Video platforma ruxsat bersa ko‘rinadi; VK/OK/Rutube tashqi playerlari sinxron Play/Pause va vaqt boshqaruvini ishonchli bermagani uchun bu manbalarda video ochilishi ulashiladi, boshqaruvlar esa platformaning o‘zida qoladi.';
   }else if(next.mediaType==='local'||next.mediaType==='file'||next.mediaType==='hls'){
@@ -720,6 +722,20 @@ async function seekTo(t){
   const v=Math.max(0,Number(t)||0);
   try{if(media.mediaType==='youtube')player.seekTo(v,true);else if(media.mediaType==='file'||media.mediaType==='hls'||media.mediaType==='local')player.currentTime=v;else if(media.mediaType==='vimeo')await player.setCurrentTime(v)}catch(e){}
 }
+async function applyPlaybackRate(){
+  if(!player||!playerReady||!media)return;
+  const rate=Number($('playbackRate').value)||1;
+  try{
+    if(media.mediaType==='youtube'&&typeof player.setPlaybackRate==='function')player.setPlaybackRate(rate);
+    else if(media.mediaType==='vimeo'&&typeof player.setPlaybackRate==='function')await player.setPlaybackRate(rate);
+    else if(['file','hls','local'].includes(media.mediaType))player.playbackRate=rate;
+  }catch(_){$('videoError').textContent='Bu video manbasi tanlangan ijro tezligini qo‘llab-quvvatlamaydi.'}
+}
+$('playbackRate').addEventListener('change',()=>{
+  applyPlaybackRate();
+  const rate=Number($('playbackRate').value)||1;
+  $('playState').textContent='Ijro tezligi: '+rate+'×';
+});
 async function play(){if(!player||!playerReady)return false;try{if(media.mediaType==='youtube'){player.playVideo();return true}await player.play();return true}catch(e){$('videoError').textContent='Avtomatik ijro bloklandi. Videoni o‘zingiz Play tugmasi bilan boshlang; keyin holat xona bilan sinxronlanadi.';return false}}
 async function pause(){if(!player||!playerReady)return;try{if(media.mediaType==='youtube')player.pauseVideo();else await player.pause()}catch(e){}}
 async function applyState(s){
