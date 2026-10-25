@@ -30,7 +30,7 @@ $('joinRoom').onclick=()=>{
 $('roomInput').oninput=e=>e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
 socket.on('room:error',m=>{$('entryError').textContent=m;$('videoError').textContent=m});
 socket.on('room:joined',d=>{
-  roomId=d.roomId;isHost=d.isHost;$('publicRoomsPanel').classList.add('hidden');renderGame(d.game);applyRoomSettings(d.title||'Tomosha xonasi',d.theme||'violet',isHost);siteUrl=d.siteUrl||null;siteExpanded=Boolean(d.siteExpanded);screenOwner=d.screenOwner||null;renderSharedSite(siteUrl,siteExpanded);
+  roomId=d.roomId;isHost=d.isHost;setSection('watch');$('publicRoomsPanel').classList.add('hidden');$('activityHub').classList.add('hidden');renderGame(d.game);applyRoomSettings(d.title||'Tomosha xonasi',d.theme||'violet',isHost);siteUrl=d.siteUrl||null;siteExpanded=Boolean(d.siteExpanded);screenOwner=d.screenOwner||null;renderSharedSite(siteUrl,siteExpanded);
   $('entry').classList.add('hidden');$('how').classList.add('hidden');$('workspace').classList.remove('hidden');
   $('roomCode').textContent=roomId;$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
   $('loadVideo').disabled=false;$('youtubeUrl').disabled=false;$('mediaType').disabled=false;$('screenShare').disabled=!!screenOwner&&screenOwner!==socket.id;$('chat').replaceChildren();
@@ -162,7 +162,7 @@ $('leaveRoom').onclick=()=>{
   for(const id of Array.from(peers.keys()))removePeer(id);
   for(const id of Array.from(callPeers.keys()))removeCallPeer(id);
   socket.emit('room:leave');destroyPlayer();roomId=null;history.replaceState({},'',location.pathname);
-  renderGame({board:Array(9).fill(null),turn:'X',winner:null,moves:0});$('publicRoomsPanel').classList.remove('hidden');$('workspace').classList.add('hidden');$('entry').classList.remove('hidden');refreshPublicRooms();$('how').classList.remove('hidden');document.body.dataset.roomTheme='violet';
+  renderGame({board:Array(9).fill(null),turn:'X',winner:null,moves:0});$('sharedFilesList').replaceChildren();$('fileShareStatus').textContent='Bir fayl 450 KB gacha. Fayllar joriy xonada vaqtincha saqlanadi.';$('roomFileInput').value='';setSection(activeSection);refreshPublicRooms();document.body.dataset.roomTheme='violet';
 };
 
 let gameState={board:Array(9).fill(null),turn:'X',winner:null,moves:0};
@@ -208,6 +208,38 @@ document.querySelectorAll('[data-launch]').forEach(button=>button.addEventListen
   const target=document.getElementById(targets[action]);
   if(target){target.scrollIntoView({behavior:'smooth',block:'center'});if(action==='watch'||action==='browser')target.focus({preventScroll:true});else target.click()}
 }));
+
+
+const sharedFileIds=new Set();
+function formatBytes(bytes){return bytes<1024?bytes+' B':(bytes/1024).toFixed(1)+' KB'}
+function renderSharedFile(file){
+  if(!file||!file.id||sharedFileIds.has(file.id))return;
+  sharedFileIds.add(file.id);
+  const list=$('sharedFilesList');
+  const empty=list.querySelector('.muted.small');if(empty)empty.remove();
+  const item=document.createElement('div');item.className='file-share-item';
+  const info=document.createElement('div');const title=document.createElement('div');title.className='file-share-name';title.textContent=file.name;
+  const meta=document.createElement('div');meta.className='file-share-meta';meta.textContent=(file.by||'Ishtirokchi')+' · '+formatBytes(file.size||0)+' · '+new Date(file.at||Date.now()).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  info.append(title,meta);
+  const link=document.createElement('a');link.className='btn file-share-link';link.textContent='Yuklab olish';link.href=file.data;link.download=file.name;link.rel='noopener';link.setAttribute('aria-label',file.name+' faylini yuklab olish');
+  item.append(info,link);list.append(item);
+}
+socket.on('file:shared',file=>{renderSharedFile(file);$('fileShareStatus').textContent='Fayl xona bilan ulashildi.'});
+$('shareRoomFile').addEventListener('click',()=>{
+  if(!roomId){$('fileShareStatus').textContent='Avval tomosha xonasiga kiring.';return}
+  const input=$('roomFileInput'),file=input.files&&input.files[0];
+  if(!file){$('fileShareStatus').textContent='Avval fayl tanlang.';return}
+  if(file.size>450*1024){$('fileShareStatus').textContent='Fayl 450 KB dan kichik bo‘lishi kerak.';return}
+  const allowed=new Set(['pdf','txt','md','csv','png','jpg','jpeg','gif','webp','mp3','mp4','webm']);
+  const ext=file.name.includes('.')?file.name.split('.').pop().toLowerCase():'';
+  if(!allowed.has(ext)){$('fileShareStatus').textContent='Bu fayl turi qo‘llab-quvvatlanmaydi.';return}
+  $('shareRoomFile').disabled=true;$('fileShareStatus').textContent='Fayl yuborilmoqda…';
+  const reader=new FileReader();
+  reader.onload=()=>{socket.emit('file:share',{name:file.name,mime:file.type,data:reader.result})};
+  reader.onerror=()=>{$('fileShareStatus').textContent='Faylni o‘qib bo‘lmadi.';$('shareRoomFile').disabled=false};
+  reader.onloadend=()=>{$('shareRoomFile').disabled=false};
+  reader.readAsDataURL(file);
+});
 
 function parseMedia(raw){
   try{
@@ -671,12 +703,13 @@ function setSection(section){
   const buttons={home:'navHome',friends:'navFriends',watch:'navWatch',profile:'navProfile'};
   Object.entries(buttons).forEach(([key,id])=>$(id).setAttribute('aria-current',key===section?'true':'false'));
   $('friendsPanel').classList.toggle('hidden',section!=='friends');
-  $('accountPanel').classList.toggle('hidden',section!=='profile'&&Boolean(currentAccount));
-  $('heroTitle').parentElement.classList.toggle('hidden',section==='friends'||section==='profile');
-  $('entry').classList.toggle('hidden',(section!=='home'&&section!=='watch')||Boolean(roomId));
+  $('accountPanel').classList.toggle('hidden',section!=='profile');
+  $('activityHub').classList.toggle('hidden',section!=='home'||Boolean(roomId));
+  $('publicRoomsPanel').classList.toggle('hidden',section!=='home'||Boolean(roomId));
+  $('heroTitle').parentElement.classList.toggle('hidden',section==='friends'||section==='profile'||Boolean(roomId));
+  $('entry').classList.toggle('hidden',!((section==='home'||section==='watch')&&!roomId));
   $('how').classList.toggle('hidden',section!=='home'||Boolean(roomId));
-  if(section==='watch'&&!roomId)$('entry').classList.remove('hidden');
-  if(section==='profile')$('accountPanel').classList.remove('hidden');
+  $('workspace').classList.toggle('hidden',!(section==='watch'&&Boolean(roomId)));
 }
 $('navHome').onclick=()=>setSection('home');
 $('navFriends').onclick=()=>{setSection('friends');if(!currentAccount)$('friendsMessage').textContent='Do‘stlarni qidirish uchun akkauntga kiring.';else refreshFriends()};
