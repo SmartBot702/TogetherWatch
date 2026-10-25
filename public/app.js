@@ -461,7 +461,7 @@ $('shareRoomFile').addEventListener('click',()=>{
   const input=$('roomFileInput'),file=input.files&&input.files[0];
   if(!file){$('fileShareStatus').textContent='Avval fayl tanlang.';return}
   if(file.size>450*1024){$('fileShareStatus').textContent='Fayl 450 KB dan kichik bo‘lishi kerak.';return}
-  const allowed=new Set(['pdf','txt','md','csv','png','jpg','jpeg','gif','webp','mp3','mp4','webm']);
+  const allowed=new Set(['pdf','txt','md','csv','png','jpg','jpeg','gif','webp','mp3']);
   const ext=file.name.includes('.')?file.name.split('.').pop().toLowerCase():'';
   if(!allowed.has(ext)){$('fileShareStatus').textContent='Bu fayl turi qo‘llab-quvvatlanmaydi.';return}
   $('shareRoomFile').disabled=true;$('fileShareStatus').textContent='Fayl yuborilmoqda…';
