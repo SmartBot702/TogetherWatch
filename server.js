@@ -178,6 +178,15 @@ function validVideoId(v) { return typeof v === 'string' && /^[A-Za-z0-9_-]{11}$/
 function emptyState() {
   return { mediaType: null, mediaId: null, mediaUrl: null, videoId: null, isPlaying: false, currentTime: 0, updatedAt: Date.now() };
 }
+async function validateMediaSource(p) {
+  if (!p || typeof p !== 'object') return;
+  const type = p.mediaType || (p.videoId ? 'youtube' : '');
+  if (type !== 'file' && type !== 'hls') return;
+  const raw = typeof p.mediaUrl === 'string' ? p.mediaUrl.slice(0, 2048) : '';
+  // Shared media URLs are fetched by every viewer's browser, so refuse loopback,
+  // private-network and DNS names resolving to non-public addresses.
+  await safePublicUrl(raw);
+}
 function normalizeMedia(p) {
   if (!p || typeof p !== 'object') return null;
   const type = p.mediaType || (p.videoId ? 'youtube' : '');
@@ -621,9 +630,11 @@ io.on('connection', socket => {
       persistRoom(r);
     }
   });
-  socket.on('queue:add', p => {
+  socket.on('queue:add', async p => {
     const id = socket.data.roomId, r = rooms.get(id);
     if (!r || !r.members.has(socket.id)) return error(socket, 'Avval tomosha xonasiga kiring.');
+    try { await validateMediaSource(p); }
+    catch (_) { return error(socket, 'Video havolasi ochiq internet manzili bo‘lishi kerak. Mahalliy yoki ichki tarmoq manzillari taqiqlangan.'); }
     const media = normalizeMedia(p);
     if (!media) return error(socket, 'Navbatga YouTube, Vimeo, MP4/WebM yoki HLS havolasini qo‘shing.');
     r.queue = r.queue || [];
@@ -661,9 +672,11 @@ io.on('connection', socket => {
     io.to(id).emit('queue:updated', r.queue);
     persistRoom(r);
   });
-  socket.on('video:load', p => {
+  socket.on('video:load', async p => {
     const id = socket.data.roomId, r = rooms.get(id);
     if (!r || !r.members.has(socket.id)) return error(socket, 'Avval tomosha xonasiga kiring.');
+    try { await validateMediaSource(p); }
+    catch (_) { return error(socket, 'Video havolasi ochiq internet manzili bo‘lishi kerak. Mahalliy yoki ichki tarmoq manzillari taqiqlangan.'); }
     const media = normalizeMedia(p);
     if (!media) return error(socket, 'YouTube, Vimeo, MP4/WebM yoki HLS (.m3u8) video havolasini kiriting.');
     r.state = { ...media, isPlaying: false, currentTime: 0, updatedAt: Date.now() };
