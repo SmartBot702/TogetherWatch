@@ -101,7 +101,8 @@ async function saveRoomSnapshot(room) {
     siteExpanded: Boolean(room.siteExpanded),
     title: typeof room.title === 'string' ? room.title.slice(0, 60) : 'Tomosha xonasi',
     theme: ['violet','ocean','sunset','emerald'].includes(room.theme) ? room.theme : 'violet',
-    isPublic: Boolean(room.isPublic)
+    isPublic: Boolean(room.isPublic),
+    links: Array.isArray(room.links) ? room.links.slice(0, 30) : []
   };
   await pool.query('INSERT INTO togetherwatch_rooms (room_id, payload, empty_at, updated_at) VALUES ($1, $2::jsonb, $3, now()) ON CONFLICT (room_id) DO UPDATE SET payload = EXCLUDED.payload, empty_at = EXCLUDED.empty_at, updated_at = now()', [room.id, JSON.stringify(payload), room.emptyAt || null]);
 }
