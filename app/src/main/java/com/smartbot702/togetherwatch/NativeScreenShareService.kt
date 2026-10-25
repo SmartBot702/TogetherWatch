@@ -127,9 +127,9 @@ class NativeScreenShareService : Service() {
                 connectTimeout = 3000
                 readTimeout = 3000
             }
-            connection.use {
-                if (it.responseCode in 200..299) {
-                    val root = JSONObject(it.inputStream.bufferedReader().use { reader -> reader.readText() })
+            try {
+                if (connection.responseCode in 200..299) {
+                    val root = JSONObject(connection.inputStream.bufferedReader().use { reader -> reader.readText() })
                     val entries = root.optJSONArray("iceServers")
                     if (entries != null) for (i in 0 until entries.length()) {
                         val entry = entries.optJSONObject(i) ?: continue
@@ -149,6 +149,8 @@ class NativeScreenShareService : Service() {
                         }
                     }
                 }
+            } finally {
+                connection.disconnect()
             }
         } catch (e: Exception) {
             android.util.Log.w(TAG, "Could not load server ICE configuration; using STUN fallback", e)
