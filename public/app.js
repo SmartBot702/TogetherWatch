@@ -25,7 +25,8 @@ socket.on('room:joined',d=>{
   $('roomCode').textContent=roomId;$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
   $('loadVideo').disabled=false;$('youtubeUrl').disabled=false;$('mediaType').disabled=false;$('screenShare').disabled=!!screenOwner&&screenOwner!==socket.id;$('chat').innerHTML='';
   history.replaceState({},'',location.pathname+'?room='+roomId);
-  renderQueue(d.queue||[]);\n  if(d.state&&(d.state.mediaType||d.state.videoId))loadMedia(normalizeState(d.state),d.state);
+  renderQueue(d.queue||[]);
+  if(d.state&&(d.state.mediaType||d.state.videoId))loadMedia(normalizeState(d.state),d.state);
 });
 socket.on('room:role',d=>{
   isHost=d.isHost;$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
