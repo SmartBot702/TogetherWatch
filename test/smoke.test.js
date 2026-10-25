@@ -110,6 +110,15 @@ test('two clients share a room, activity selection, and chat in realtime', async
     const me = await meResponse.json();
     assert.equal(me.user.username, 'smoke_user');
 
+    const invalidProfile = await fetch(url + '/api/auth/profile', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', cookie: sessionCookie },
+      body: JSON.stringify({ displayName: 'Should Not Persist', bio: 'temporary', avatar: 'javascript:alert(1)' })
+    });
+    assert.equal(invalidProfile.status, 400, 'invalid avatar URL should be rejected');
+    const unchangedProfile = await (await fetch(url + '/api/auth/me', { headers: { cookie: sessionCookie } })).json();
+    assert.equal(unchangedProfile.user.displayName, 'Smoke User', 'invalid profile patch must not partially mutate the account');
+
     host = connect(url, { transports: ['websocket'], reconnection: false, timeout: 5000 });
     guest = connect(url, { transports: ['websocket'], reconnection: false, timeout: 5000 });
     await Promise.all([waitForEvent(host, 'connect'), waitForEvent(guest, 'connect')]);
