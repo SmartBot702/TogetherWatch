@@ -235,7 +235,7 @@ function enter(socket, id, name, create, options = {}) {
   if (!name) return error(socket, 'Ismingizni kiriting.');
   let r = rooms.get(id);
   if (r && !r.members.size && r.emptyAt && Date.now() - r.emptyAt > 6 * 60 * 60 * 1000) { discardRoom(id); r = null; }
-  if (!r && create) { r = { id, hostId: socket.id, members: new Map(), callReady: new Set(), state: emptyState(), queue: [], messages: [], siteUrl: null, siteExpanded: false, screenOwner: null, title: cleanRoomTitle(options.title) || 'Tomosha xonasi', theme: cleanRoomTheme(options.theme), isPublic: Boolean(options.isPublic), game: { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 } }; rooms.set(id, r); }
+  if (!r && create) { r = { id, hostId: socket.id, members: new Map(), callReady: new Set(), state: emptyState(), queue: [], messages: [], siteUrl: null, siteExpanded: false, screenOwner: null, title: cleanRoomTitle(options.title) || 'Tomosha xonasi', theme: cleanRoomTheme(options.theme), isPublic: Boolean(options.isPublic), game: { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 }, boardStrokes: [] }; rooms.set(id, r); }
   if (!r.title) r.title = 'Tomosha xonasi';
   if (!r.theme) r.theme = 'violet';
   if (r && !Array.isArray(r.messages)) r.messages = [];
@@ -251,6 +251,7 @@ function enter(socket, id, name, create, options = {}) {
   socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, title: r.title, theme: r.theme, state: r.state, queue: r.queue || [], chatHistory: r.messages.slice(-100), siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner, isPublic: Boolean(r.isPublic), game: r.game || { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 } });
   for (const file of (r.files || [])) socket.emit('file:shared', file);
   for (const link of (r.links || [])) socket.emit('link:shared', link);
+  socket.emit('board:history', Array.isArray(r.boardStrokes) ? r.boardStrokes.slice(-2000) : []);
   for (const memberId of (r.callReady || [])) if (memberId !== socket.id) socket.emit('rtc:ready', { from: memberId, ready: true });
   socket.to(id).emit('room:system', name + ' xonaga qo‘shildi.');
   broadcastPeople(id);
@@ -280,6 +281,30 @@ io.on('connection', socket => {
     r.theme = cleanRoomTheme(p && p.theme);
     if (typeof (p && p.isPublic) === 'boolean') r.isPublic = p.isPublic;
     io.to(id).emit('room:settings', { title: r.title, theme: r.theme, isPublic: Boolean(r.isPublic), by: socket.data.name });
+    persistRoom(r, true);
+  });
+
+
+  socket.on('board:stroke', p => {
+    const id = socket.data.roomId, r = rooms.get(id);
+    if (!r || !r.members.has(socket.id) || !p || !['#ffffff','#c4b5fd','#f0abfc','#67d9ff','#6ee7b7','#fb923c','#f87171','#111827'].includes(p.color)) return;
+    const values = [p.x0,p.y0,p.x1,p.y1,p.width].map(Number);
+    if (!values.every(Number.isFinite) || values.slice(0,4).some(v => v < 0 || v > 1) || values[4] < 1 || values[4] > 16) return;
+    const now = Date.now();
+    if (now - (socket.data.lastBoardStrokeAt || 0) < 8) return;
+    socket.data.lastBoardStrokeAt = now;
+    if (!Array.isArray(r.boardStrokes)) r.boardStrokes = [];
+    const stroke = { x0:values[0], y0:values[1], x1:values[2], y1:values[3], width:values[4], color:p.color, by:socket.data.name };
+    r.boardStrokes.push(stroke);
+    if (r.boardStrokes.length > 2000) r.boardStrokes.splice(0, r.boardStrokes.length - 2000);
+    socket.to(id).emit('board:stroke', stroke);
+    persistRoom(r);
+  });
+  socket.on('board:clear', () => {
+    const id = socket.data.roomId, r = rooms.get(id);
+    if (!r || !r.members.has(socket.id)) return;
+    r.boardStrokes = [];
+    io.to(id).emit('board:clear');
     persistRoom(r, true);
   });
 
@@ -508,7 +533,7 @@ auth.attach(app, io).then(async () => {
       messages: Array.isArray(payload.messages) ? payload.messages.slice(-100) : [],
       siteUrl: payload.siteUrl || null, siteExpanded: Boolean(payload.siteExpanded),
       title: typeof payload.title === 'string' ? payload.title : 'Tomosha xonasi', theme: cleanRoomTheme(payload.theme),
-      screenOwner: null, files: [], links: Array.isArray(payload.links) ? payload.links.slice(0, 30) : [], isPublic: Boolean(payload.isPublic), emptyAt: saved.emptyAt || Date.now()
+      screenOwner: null, files: [], links: Array.isArray(payload.links) ? payload.links.slice(0, 30) : [], boardStrokes: Array.isArray(payload.boardStrokes) ? payload.boardStrokes.slice(-2000) : [], isPublic: Boolean(payload.isPublic), emptyAt: saved.emptyAt || Date.now()
     };
     rooms.set(room.id, room);
     persistRoom(room, true);
