@@ -1,6 +1,6 @@
 # Umumiy masofaviy brauzer
 
-Xonadagi Umumiy brauzer — bitta masofaviy Chromium sahifasi. Barcha ishtirokchilar bir xil sahifani ko‘radi; bosish, yozish, aylantirish va navigatsiya umumiy sessiyaga ta’sir qiladi. Tasvirlar taxminan sekundiga bir marta tekshiriladi; sahifa o‘zgarmagan bo‘lsa, bir xil kadr qayta uzatilmaydi. Bu yuqori FPS video oqimi emas va statik sahifalarda trafikni kamaytiradi.
+Xonadagi Umumiy brauzer — bitta masofaviy Chromium sahifasi. Barcha ishtirokchilar bir xil sahifani ko‘radi; bosish, yozish, aylantirish va navigatsiya umumiy sessiyaga ta’sir qiladi. Chromium mos bo‘lsa, umumiy brauzer CDP screencast orqali bir necha kadr/soniya uzatadi; aks holda sekundiga bir marta screenshot fallback ishlaydi. Fallback’da sahifa o‘zgarmagan bo‘lsa, bir xil kadr qayta uzatilmaydi. Bu WebRTC video oqimi emas: kadrlar JPEG sifatida Socket.IO orqali keladi, shuning uchun haqiqiy video tomosha qilish uchun sinxron player yoki ekran ulashish afzal.
 
 ## To‘liq stackni ishga tushirish
 
