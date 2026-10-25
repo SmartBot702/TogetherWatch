@@ -52,7 +52,7 @@ render.yaml Node.js xizmatining asosiy qismini joylashtiradi, lekin Docker Compo
 - Qo‘llab-quvvatlanadigan video playerlarda 0.5×–2× ijro tezligini tanlash (tezlik har bir tomoshabinda alohida sozlanadi).
 - Mahalliy `.srt` va `.vtt` subtitr fayllarini MP4/WebM/HLS yoki yuklangan videoga ulash. Xona egasi VTT subtitrni 512 KB gacha barcha ishtirokchilarga ulashishi mumkin; xona keyin qo‘shilganlar ham uni oladi. Subtitr YouTube/Vimeo/Drive iframe’larida ishlamaydi.
 - Ovozli/video suhbatda aloqa uzilganda ulanish holati kuzatiladi; tiklanmasa, belgilangan tomon 1.2, 2.4 va 4.8 soniyalik oraliqlarda ko‘pi bilan 3 marta qayta urinadi. Muvaffaqiyatli ulanishda urinishlar hisoblagichi tozalanadi.
-- Xona chatida foydalanuvchi o‘z xabarini tahrirlashi yoki o‘chirishi mumkin; server faqat xabar muallifiga ruxsat beradi va o‘zgarishni xonadagi barchaga tarqatadi. Xabarga javob berish orqali qisqa iqtibos qo‘shish ham mumkin.
+- Xona chatida xabarlarni qidirish, `@Ism_Familiya` ko‘rinishida ishtirokchini eslatish, xabarga javob berish va o‘z xabarini tahrirlash/o‘chirish mumkin; tahrirlash va o‘chirishni server muallif bilan tekshiradi.
 - Umumiy chat, akkaunt/profil, do‘stlar va shaxsiy xabarlar.
 - Ovoz/video qo‘ng‘iroqlari va WebRTC ekran ulashish.
 - Bir xil masofaviy Chromium sahifasini hamma birga boshqaradigan umumiy brauzer.
@@ -62,10 +62,10 @@ render.yaml Node.js xizmatining asosiy qismini joylashtiradi, lekin Docker Compo
 ## Muhim cheklovlar va xavfsizlik
 
 - Umumiy brauzerda barcha ishtirokchilar bir sahifani ko‘radi va boshqarishi mumkin. Parol, bank yoki boshqa maxfiy ma’lumotlarni kiritmang.
-- DRM, CAPTCHA, login talablari va saytning bot-himoyasi ayrim sahifalarni ishlatishga to‘sqinlik qilishi mumkin. Bu barcha saytlar uchun kafolatlangan 1:1 moslik emas.
+- Havolani tekshirish sahifadagi ochiq video teglarini va umumiy brauzerning ochiq tarmoq javoblarini aniqlashga urinadi. Video faqat Play bosilgandan keyin so‘raladigan ayrim saytlarda umumiy brauzerda Play bosib ko‘ring; mos ochiq MP4/WebM/HLS oqimi topilsa, xona egasiga sinxron playerga ulash tugmasi ko‘rinadi. Aniqlash barcha saytlar uchun kafolatlanmaydi; blob URL, DRM, login talab qiluvchi yoki faqat brauzer cookie’si bilan ochiladigan oqimlar ishlamasligi mumkin.
 - Ovoz/video va ekran ulashish uchun HTTPS hamda brauzer ruxsatlari kerak. Ayrim tarmoqlarda TURN_URLS, TURN_USERNAME, TURN_CREDENTIAL sozlash talab etiladi.
 - .env faylini GitHub’ga yuklamang. Docker volume’lar ma’lumotni saqlaydi; muntazam PostgreSQL backup ham sozlang.
-- Google Drive videosi uchun fayl sozlamasida “Havolaga ega har kim — Viewer” ruxsatini yoqing. Drive preview oynasi tashqi iframe bo‘lgani uchun Play/Pause, seek va vaqtni sinxron boshqarish hozircha qo‘llanmaydi; har bir ishtirokchi videoni player ichida o‘zi boshlaydi.
+- Google Drive preview iframe’ining ichki Play/Pause va vaqtini TogetherWatch bevosita boshqara olmaydi. Drive havolasini umumiy masofaviy brauzerda ochib, video ijrosini boshlash orqali ochiq media oqimini aniqlashga urinib ko‘rish mumkin, ammo Drive’ning vaqtinchalik yoki cookie talab qiladigan oqimi ko‘pincha umumiy playerga ko‘chmaydi. Bunday holatda Drive ruxsatini “Havolaga ega har kim — Viewer” qilib, Drive oynasida har bir tomoshabin o‘zi Play bosishi kerak.
 - Katta video fayllari server diskida joy egallaydi va har bir tomoshabinga serverdan oqim uzatiladi; hosting bandwidth va disk limitlarini hisobga oling. Docker Compose’da yuklangan videolar `togetherwatch_uploads` volume’ida saqlanadi.
 - Kontentni qayta tarqatmang; video platformalarining mualliflik huquqi va foydalanish shartlariga rioya qiling.
 
