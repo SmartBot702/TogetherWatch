@@ -252,6 +252,11 @@ function normalizeMedia(p) {
     try { const source = new URL(p.mediaUrl); const hash = source.searchParams.get('h') || ''; if (source.hostname === 'player.vimeo.com' && source.pathname === '/video/' + id && /^[A-Za-z0-9]{1,64}$/.test(hash)) mediaUrl += '?h=' + encodeURIComponent(hash); } catch (_) {}
     return { mediaType: 'vimeo', mediaId: id, mediaUrl, videoId: null };
   }
+  if (type === 'gdrive') {
+    const id = String(p.mediaId || '');
+    if (!/^[A-Za-z0-9_-]{10,200}$/.test(id)) return null;
+    return { mediaType: 'gdrive', mediaId: id, mediaUrl: 'https://drive.google.com/file/d/' + id + '/preview', videoId: null };
+  }
   if (type === 'vk') {
     const id = String(p.mediaId || '');
     const match = id.match(/^(-?\d{1,15})_(\d{1,20})$/);
@@ -345,7 +350,7 @@ function enter(socket, id, name, create, options = {}) {
   socket.data.roomId = id;
   socket.data.name = name;
   r.members.set(socket.id, { id: socket.id, name });
-  socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, title: r.title, theme: r.theme, state: r.state, queue: r.queue || [], chatHistory: r.messages.slice(-100), videos: Array.isArray(r.videos) ? r.videos : [], siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner, isPublic: Boolean(r.isPublic), activeActivity: r.activeActivity || 'video', activeGame: r.activeGame || 'tictactoe', game: r.game || { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 }, connectFour: r.connectFour || { board: Array.from({length:6},()=>Array(7).fill(null)), turn: 'R', winner: null, moves: 0 } });
+  socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, title: r.title, theme: r.theme, state: r.state, queue: r.queue || [], videos: r.videos || [], chatHistory: r.messages.slice(-100), videos: Array.isArray(r.videos) ? r.videos : [], siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner, isPublic: Boolean(r.isPublic), activeActivity: r.activeActivity || 'video', activeGame: r.activeGame || 'tictactoe', game: r.game || { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 }, connectFour: r.connectFour || { board: Array.from({length:6},()=>Array(7).fill(null)), turn: 'R', winner: null, moves: 0 } });
   for (const file of (r.files || [])) socket.emit('file:shared', file);
   for (const link of (r.links || [])) socket.emit('link:shared', link);
   socket.emit('board:history', Array.isArray(r.boardStrokes) ? r.boardStrokes.slice(-2000) : []);
