@@ -812,13 +812,34 @@ io.on('connection', socket => {
     if (limit.count >= 8) return error(socket, 'Juda tez-tez xabar yuboryapsiz. 5 soniya kutib qayta urinib ko‘ring.');
     limit.count++;
     {
-      const message = { name: socket.data.name, text, at: now };
+      const message = { id: crypto.randomBytes(12).toString('hex'), byId: socket.id, name: socket.data.name, text, at: now };
       if (!Array.isArray(r.messages)) r.messages = [];
       r.messages.push(message);
       if (r.messages.length > 100) r.messages.splice(0, r.messages.length - 100);
       io.to(id).emit('chat:message', message);
       persistRoom(r);
     }
+  });
+  socket.on('chat:edit', p => {
+    const id = socket.data.roomId, r = rooms.get(id);
+    if (!r || !r.members.has(socket.id) || !p || typeof p.id !== 'string') return;
+    const message = (r.messages || []).find(m => m.id === p.id);
+    if (!message || message.byId !== socket.id) return error(socket, 'Faqat o‘zingiz yuborgan xabarni tahrirlashingiz mumkin.');
+    const text = typeof p.text === 'string' ? p.text.trim().slice(0, 500) : '';
+    if (!text) return error(socket, 'Xabar bo‘sh bo‘lishi mumkin emas.');
+    message.text = text;
+    message.editedAt = Date.now();
+    io.to(id).emit('chat:message:updated', message);
+    persistRoom(r);
+  });
+  socket.on('chat:delete', p => {
+    const id = socket.data.roomId, r = rooms.get(id);
+    if (!r || !r.members.has(socket.id) || !p || typeof p.id !== 'string') return;
+    const index = (r.messages || []).findIndex(m => m.id === p.id);
+    if (index < 0 || r.messages[index].byId !== socket.id) return error(socket, 'Faqat o‘zingiz yuborgan xabarni o‘chirishingiz mumkin.');
+    const [message] = r.messages.splice(index, 1);
+    io.to(id).emit('chat:message:deleted', { id: message.id });
+    persistRoom(r);
   });
   socket.on('queue:add', async p => {
     const id = socket.data.roomId, r = rooms.get(id);
