@@ -47,7 +47,7 @@ render.yaml Node.js xizmatining asosiy qismini joylashtiradi, lekin Docker Compo
 ## Imkoniyatlar
 
 - Xona yaratish/qo‘shilish, taklif kodi va havola, 20 tagacha ishtirokchi.
-- YouTube, Vimeo, VK Video, OK.ru va Rutube embed’lari; MP4/WebM/M4V/OGV hamda HLS uchun sinxron playback (platforma va DRM cheklovlari bo‘lishi mumkin).
+- YouTube, Vimeo, VK Video, OK.ru, Rutube va Google Drive video havolalari; MP4/WebM/M4V/OGV hamda HLS uchun playback. YouTube/Vimeo va yuklangan videolarda sinxron boshqaruv mavjud; tashqi player imkoniyatlari platformaga bog‘liq.
 - Xonaga 4 GB gacha bo‘lgan MP4/WebM/M4V/OGV kinoni bo‘laklab yuklash, HTTP Range orqali oqimli ijro va sinxron Play/Pause/seek. MAX_VIDEO_UPLOAD_MB bilan bitta video limitini, MAX_ROOM_VIDEO_GB bilan xona jami limitini sozlash mumkin.
 - Umumiy chat, akkaunt/profil, do‘stlar va shaxsiy xabarlar.
 - Ovoz/video qo‘ng‘iroqlari va WebRTC ekran ulashish.
@@ -61,6 +61,7 @@ render.yaml Node.js xizmatining asosiy qismini joylashtiradi, lekin Docker Compo
 - DRM, CAPTCHA, login talablari va saytning bot-himoyasi ayrim sahifalarni ishlatishga to‘sqinlik qilishi mumkin. Bu barcha saytlar uchun kafolatlangan 1:1 moslik emas.
 - Ovoz/video va ekran ulashish uchun HTTPS hamda brauzer ruxsatlari kerak. Ayrim tarmoqlarda TURN_URLS, TURN_USERNAME, TURN_CREDENTIAL sozlash talab etiladi.
 - .env faylini GitHub’ga yuklamang. Docker volume’lar ma’lumotni saqlaydi; muntazam PostgreSQL backup ham sozlang.
+- Google Drive videosi uchun fayl sozlamasida “Havolaga ega har kim — Viewer” ruxsatini yoqing. Drive preview oynasi tashqi iframe bo‘lgani uchun Play/Pause, seek va vaqtni sinxron boshqarish hozircha qo‘llanmaydi; har bir ishtirokchi videoni player ichida o‘zi boshlaydi.
 - Katta video fayllari server diskida joy egallaydi va har bir tomoshabinga serverdan oqim uzatiladi; hosting bandwidth va disk limitlarini hisobga oling. Docker Compose’da yuklangan videolar `togetherwatch_uploads` volume’ida saqlanadi.
 - Kontentni qayta tarqatmang; video platformalarining mualliflik huquqi va foydalanish shartlariga rioya qiling.
 
