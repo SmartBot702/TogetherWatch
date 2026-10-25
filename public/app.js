@@ -41,7 +41,7 @@ $('joinRoom').onclick=()=>{
 $('roomInput').oninput=e=>e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
 socket.on('room:error',m=>{$('entryError').textContent=m;$('videoError').textContent=m;$('fileShareStatus').textContent=m});
 socket.on('room:joined',d=>{
-  roomId=d.roomId;isHost=d.isHost;setRoomTab('video');setSection('watch');$('publicRoomsPanel').classList.add('hidden');$('activityHub').classList.add('hidden');renderGame(d.game);applyRoomSettings(d.title||'Tomosha xonasi',d.theme||'violet',isHost);siteUrl=d.siteUrl||null;siteExpanded=Boolean(d.siteExpanded);screenOwner=d.screenOwner||null;renderSharedSite(siteUrl,siteExpanded);
+  roomId=d.roomId;isHost=d.isHost;setRoomTab('video');setSection('watch');$('publicRoomsPanel').classList.add('hidden');$('activityHub').classList.add('hidden');renderGame(d.game);applyRoomSettings(d.title||'Tomosha xonasi',d.theme||'violet',isHost,d.isPublic);siteUrl=d.siteUrl||null;siteExpanded=Boolean(d.siteExpanded);screenOwner=d.screenOwner||null;renderSharedSite(siteUrl,siteExpanded);
   $('entry').classList.add('hidden');$('how').classList.add('hidden');$('workspace').classList.remove('hidden');
   $('roomCode').textContent=roomId;$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
   $('loadVideo').disabled=false;$('youtubeUrl').disabled=false;$('mediaType').disabled=false;$('screenShare').disabled=!!screenOwner&&screenOwner!==socket.id;$('chat').replaceChildren();
@@ -149,21 +149,21 @@ $('copyInvite').onclick=async()=>{
   try{await navigator.clipboard.writeText(u);$('copyInvite').textContent='Nusxalandi ✓';setTimeout(()=>$('copyInvite').textContent='Havolani nusxalash',1500)}
   catch(e){prompt('Havolani nusxalang',u)}
 };
-function applyRoomSettings(title,theme,canEdit){
+function applyRoomSettings(title,theme,canEdit,isPublic=false){
   const safeTitle=String(title||'Tomosha xonasi').slice(0,60);
   const safeTheme=['violet','ocean','sunset','emerald'].includes(theme)?theme:'violet';
-  $('roomTitleDisplay').textContent=safeTitle;$('roomTitleEdit').value=safeTitle;$('roomThemeSelect').value=safeTheme;
+  $('roomTitleDisplay').textContent=safeTitle;$('roomTitleEdit').value=safeTitle;$('roomThemeSelect').value=safeTheme;$('roomPublicSetting').checked=Boolean(isPublic);
   document.body.dataset.roomTheme=safeTheme;$('roomSettings').classList.toggle('hidden',!canEdit);
 }
 $('saveRoomSettings').onclick=()=>{
   if(!roomId||!isHost)return;
   const title=$('roomTitleEdit').value.trim();
   if(!title){$('roomSettingsStatus').textContent='Xona nomini kiriting.';return}
-  socket.emit('room:settings',{title,theme:$('roomThemeSelect').value});
+  socket.emit('room:settings',{title,theme:$('roomThemeSelect').value,isPublic:$('roomPublicSetting').checked});
   $('roomSettingsStatus').textContent='Sozlamalar saqlanmoqda…';
 };
 socket.on('room:settings',d=>{
-  if(!d)return;applyRoomSettings(d.title,d.theme,isHost);
+  if(!d)return;applyRoomSettings(d.title,d.theme,isHost,d.isPublic);
   $('roomSettingsStatus').textContent='Xona sozlamalari yangilandi.';
   system((d.by||'Xona egasi')+' xona ko‘rinishini o‘zgartirdi.');
 });

@@ -277,7 +277,8 @@ io.on('connection', socket => {
     if (!title) return error(socket, 'Xona nomi bo‘sh bo‘lmasligi kerak.');
     r.title = title;
     r.theme = cleanRoomTheme(p && p.theme);
-    io.to(id).emit('room:settings', { title: r.title, theme: r.theme, by: socket.data.name });
+    if (typeof (p && p.isPublic) === 'boolean') r.isPublic = p.isPublic;
+    io.to(id).emit('room:settings', { title: r.title, theme: r.theme, isPublic: Boolean(r.isPublic), by: socket.data.name });
     persistRoom(r, true);
   });
 
