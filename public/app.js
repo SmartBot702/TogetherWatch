@@ -337,6 +337,16 @@ async function seek(d){
   await seekTo(t);emitPlayback(await isPlaying(),t);
 }
 $('back').onclick=()=>seek(-10);$('forward').onclick=()=>seek(10);
+document.addEventListener('keydown',e=>{
+  if(!roomId||!playerReady||e.altKey||e.ctrlKey||e.metaKey)return;
+  const target=e.target;
+  if(target&&target.closest&&target.closest('input,textarea,select,button,[contenteditable="true"]'))return;
+  if(e.code==='Space'){e.preventDefault();$('playPause').click()}
+  else if(e.code==='ArrowLeft'){e.preventDefault();seek(-10)}
+  else if(e.code==='ArrowRight'){e.preventDefault();seek(10)}
+  else if(e.key.toLowerCase()==='m')$('muteToggle').click();
+  else if(e.key.toLowerCase()==='f')$('videoFullscreen').click();
+});
 setInterval(async()=>{
   if(isHost&&roomId&&playerReady&&media&&await isPlaying())emitPlayback(true,await getTimeAsync());
 },2500);
