@@ -116,6 +116,24 @@ test('two clients share a room, activity selection, and chat in realtime', async
     const message = await chatPromise;
     assert.equal(message.text, 'integration-test-message');
     assert.equal(message.name, 'HostTest');
+
+    const videoLoadedPromise = waitForEvent(guest, 'video:loaded');
+    host.emit('video:load', { videoId: 'dQw4w9WgXcQ' });
+    const loaded = await videoLoadedPromise;
+    assert.equal(loaded.mediaType, 'youtube');
+    assert.equal(loaded.mediaId, 'dQw4w9WgXcQ');
+
+    const playbackPromise = waitForEvent(guest, 'video:state');
+    host.emit('video:state', {
+      mediaType: 'youtube',
+      mediaId: 'dQw4w9WgXcQ',
+      videoId: 'dQw4w9WgXcQ',
+      isPlaying: true,
+      currentTime: 12
+    });
+    const playback = await playbackPromise;
+    assert.equal(playback.isPlaying, true);
+    assert.equal(playback.currentTime, 12);
   } finally {
     if (host) host.disconnect();
     if (guest) guest.disconnect();
