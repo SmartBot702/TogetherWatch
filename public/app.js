@@ -49,7 +49,7 @@ $('joinRoom').onclick=()=>{
 $('roomInput').oninput=e=>e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
 socket.on('room:error',m=>{$('entryError').textContent=m;$('videoError').textContent=m;$('fileShareStatus').textContent=m});
 socket.on('room:joined',d=>{
-  roomId=d.roomId;isHost=d.isHost;setRoomTab(d.activeActivity||'video');setSection('watch');$('publicRoomsPanel').classList.add('hidden');$('activityHub').classList.add('hidden');renderGame(d.game);applyRoomSettings(d.title||'Tomosha xonasi',d.theme||'violet',isHost,d.isPublic);siteUrl=d.siteUrl||null;siteExpanded=Boolean(d.siteExpanded);screenOwner=d.screenOwner||null;renderSharedSite(siteUrl,siteExpanded);
+  roomId=d.roomId;isHost=d.isHost;setRoomTab(d.activeActivity||'video');setGameMode(d.activeGame||'tictactoe');setSection('watch');$('publicRoomsPanel').classList.add('hidden');$('activityHub').classList.add('hidden');renderGame(d.game);applyRoomSettings(d.title||'Tomosha xonasi',d.theme||'violet',isHost,d.isPublic);siteUrl=d.siteUrl||null;siteExpanded=Boolean(d.siteExpanded);screenOwner=d.screenOwner||null;renderSharedSite(siteUrl,siteExpanded);
   $('entry').classList.add('hidden');$('how').classList.add('hidden');$('workspace').classList.remove('hidden');
   $('roomCode').textContent=roomId;$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
   $('loadVideo').disabled=false;$('youtubeUrl').disabled=false;$('mediaType').disabled=false;$('screenShare').disabled=!!screenOwner&&screenOwner!==socket.id;$('chat').replaceChildren();
@@ -58,6 +58,7 @@ socket.on('room:joined',d=>{
   renderQueue(d.queue||[]);
   (d.chatHistory||[]).forEach(renderChatMessage);
   if(d.state&&(d.state.mediaType||d.state.videoId))loadMedia(normalizeState(d.state),d.state);
+  renderGame(d.game);renderConnectFour(d.connectFour);
   if(screenStream){screenOwner=socket.id;socket.emit('screen:started');}
   if(callStream){callReady.clear();callReady.add(socket.id);socket.emit('rtc:ready',{ready:true});}
 });
@@ -244,17 +245,45 @@ $('leaveRoom').onclick=()=>{
 };
 
 let gameState={board:Array(9).fill(null),turn:'X',winner:null,moves:0};
+let connectFourState={board:Array.from({length:6},()=>Array(7).fill(null)),turn:'R',winner:null,moves:0};
+let activeGame='tictactoe';
+function setGameMode(mode,notify=false){
+  activeGame=mode==='connect4'?'connect4':'tictactoe';
+  document.querySelectorAll('[data-game-mode]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.gameMode===activeGame)));
+  $('gameBoard').classList.toggle('hidden',activeGame!=='tictactoe');
+  $('connect4Panel').classList.toggle('hidden',activeGame!=='connect4');
+  $('gameStatus').classList.toggle('hidden',activeGame!=='tictactoe');
+  $('resetGame').textContent=activeGame==='connect4'?'Qayta boshlash':'Qayta boshlash';
+  if(notify&&roomId)socket.emit('game:select',{mode:activeGame});
+  if(activeGame==='connect4')renderConnectFour(connectFourState);else renderGame(gameState);
+}
+document.querySelectorAll('[data-game-mode]').forEach(button=>button.addEventListener('click',()=>setGameMode(button.dataset.gameMode,true)));
 function renderGame(state){
   if(state&&Array.isArray(state.board)&&state.board.length===9)gameState={board:state.board.slice(),turn:state.turn==='O'?'O':'X',winner:state.winner||null,moves:Number(state.moves)||0};
   document.querySelectorAll('[data-game-cell]').forEach((cell,i)=>{const mark=gameState.board[i]||'';cell.textContent=mark;cell.dataset.mark=mark;cell.disabled=!roomId||Boolean(gameState.winner)||Boolean(mark)});
   const status=$('gameStatus');if(!status)return;
   status.textContent=gameState.winner==='draw'?'Durrang! Qayta boshlang.':gameState.winner?gameState.winner+' g‘olib bo‘ldi!':roomId?'Navbat: '+gameState.turn+' · Istalgan ishtirokchi yurish qilishi mumkin.':'Xonaga kirgach o‘yin boshlanadi.';
 }
+function renderConnectFour(state){
+  if(state&&Array.isArray(state.board)&&state.board.length===6&&state.board.every(row=>Array.isArray(row)&&row.length===7))connectFourState={board:state.board.map(row=>row.slice()),turn:state.turn==='Y'?'Y':'R',winner:state.winner||null,moves:Number(state.moves)||0};
+  const board=$('connect4Board'),drops=$('connect4DropRow');if(!board||!drops)return;
+  board.replaceChildren();drops.replaceChildren();
+  for(let col=0;col<7;col++){
+    const drop=document.createElement('button');drop.type='button';drop.className='btn connect4-drop';drop.textContent='↓';drop.setAttribute('aria-label','Ustun '+(col+1)+' ga tashlash');drop.disabled=!roomId||Boolean(connectFourState.winner)||connectFourState.board[0][col]!==null;drop.addEventListener('click',()=>{if(roomId)socket.emit('connect4:move',{column:col})});drops.append(drop);
+    for(let row=0;row<6;row++){
+      const cell=document.createElement('button');cell.type='button';cell.className='connect4-cell';const mark=connectFourState.board[row][col];cell.dataset.mark=mark||'';cell.setAttribute('aria-label','Qator '+(row+1)+', ustun '+(col+1)+(mark?' '+(mark==='R'?'qizil':'sariq'):' bo‘sh'));cell.disabled=!roomId||Boolean(connectFourState.winner)||connectFourState.board[0][col]!==null;cell.addEventListener('click',()=>{if(roomId)socket.emit('connect4:move',{column:col})});board.append(cell);
+    }
+  }
+  const status=$('connect4Status');status.textContent=connectFourState.winner==='draw'?'Durrang! Qayta boshlang.':connectFourState.winner?((connectFourState.winner==='R'?'Qizil':'Sariq')+' g‘olib bo‘ldi!'):roomId?('Navbat: '+(connectFourState.turn==='R'?'Qizil':'Sariq')+' · Bir ustunni tanlang.'):'Xonaga kirgach o‘yin boshlanadi.';
+}
 document.querySelectorAll('[data-game-cell]').forEach(cell=>cell.addEventListener('click',()=>{if(roomId)socket.emit('game:move',{index:Number(cell.dataset.gameCell)})}));
-$('resetGame').addEventListener('click',()=>{if(roomId)socket.emit('game:reset')});
+$('resetGame').addEventListener('click',()=>{if(roomId)socket.emit(activeGame==='connect4'?'connect4:reset':'game:reset')});
 socket.on('game:state',state=>renderGame(state));
 socket.on('game:error',message=>{$('gameStatus').textContent=message});
-renderGame(gameState);
+socket.on('connect4:state',state=>renderConnectFour(state));
+socket.on('connect4:error',message=>{$('connect4Status').textContent=message});
+socket.on('game:mode',d=>{if(d&&d.mode)setGameMode(d.mode,false)});
+renderGame(gameState);renderConnectFour(connectFourState);setGameMode('tictactoe');
 
 
 async function refreshPublicRooms(){
