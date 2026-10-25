@@ -4,6 +4,8 @@ services:
     init: true
     ports:
       - "127.0.0.1:${APP_PORT:-3000}:3000"
+    volumes:
+      - togetherwatch_uploads:/app/.data/uploads
     environment:
       NODE_ENV: production
       PORT: "3000"
@@ -83,5 +85,6 @@ networks:
 
 volumes:
   postgres_data:
+  togetherwatch_uploads:
   caddy_data:
   caddy_config:
