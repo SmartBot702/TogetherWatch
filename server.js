@@ -129,7 +129,7 @@ function mediaCandidates(html, pageUrl) {
   const found = [];
   const add = raw => {
     if (!raw || typeof raw !== 'string') return;
-    const value = decodeHtml(raw.trim()).replace(/\\\//g, '/');
+    const value = decodeHtml(raw.trim()).replace(/\\//g, '/');
     try {
       const u = new URL(value, pageUrl);
       if (['http:', 'https:'].includes(u.protocol) && /\.(mp4|webm|m3u8)$/i.test(u.pathname)) found.push(u.href);
@@ -308,11 +308,11 @@ io.on('connection', socket => {
   socket.on('file:share', p => {
     const id = socket.data.roomId, r = rooms.get(id);
     if (!r || !r.members.has(socket.id) || !p || typeof p.name !== 'string' || typeof p.data !== 'string') return;
-    const name = path.basename(p.name).replace(/[^\\p{L}\\p{N}._ -]/gu, '').trim().slice(0, 100);
+    const name = path.basename(p.name).replace(/[^\p{L}\p{N}._ -]/gu, '').trim().slice(0, 100);
     const ext = path.extname(name).toLowerCase();
     const mimeByExt = { '.pdf':'application/pdf', '.txt':'text/plain', '.md':'text/markdown', '.csv':'text/csv', '.png':'image/png', '.jpg':'image/jpeg', '.jpeg':'image/jpeg', '.gif':'image/gif', '.webp':'image/webp', '.mp3':'audio/mpeg', '.mp4':'video/mp4', '.webm':'video/webm' };
     if (!name || !mimeByExt[ext]) return error(socket, 'Bu fayl turi qo‘llab-quvvatlanmaydi. PDF, TXT, MD, CSV, rasm, MP3, MP4 yoki WebM yuboring.');
-    const match = p.data.match(/^data:([a-z0-9.+-]+\\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/i);
+    const match = p.data.match(/^data:([a-z0-9.+-]+\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/i);
     if (!match || match[2].length > 620000) return error(socket, 'Fayl 450 KB dan kichik bo‘lishi va to‘g‘ri formatda bo‘lishi kerak.');
     const bytes = Buffer.from(match[2], 'base64');
     if (!bytes.length || bytes.length > 450 * 1024) return error(socket, 'Fayl hajmi 450 KB dan oshmasin.');
