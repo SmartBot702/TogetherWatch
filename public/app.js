@@ -456,7 +456,6 @@ function parseMedia(raw){
       const match=u.pathname.match(/\/(?:video|play\/embed)\/([A-Za-z0-9_-]{6,64})/);
       if(match)return{mediaType:'rutube',mediaId:match[1],mediaUrl:'https://rutube.ru/play/embed/'+match[1],videoId:null};
     }
-    }
     if(($('mediaType').value==='auto'&&/\.(mp4|webm)$/i.test(u.pathname))||$('mediaType').value==='file')return{mediaType:'file',mediaId:u.href,mediaUrl:u.href,videoId:null};
     if(($('mediaType').value==='auto'||$('mediaType').value==='hls')&&/\.m3u8$/i.test(u.pathname))return{mediaType:'hls',mediaId:u.href,mediaUrl:u.href,videoId:null};
     return null;
