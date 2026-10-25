@@ -690,9 +690,10 @@ io.on('connection', socket => {
     const idValue = p.mediaId || p.videoId || p.mediaUrl;
     const expected = r.state.mediaId || r.state.mediaUrl;
     if (type !== r.state.mediaType || idValue !== expected) return;
-    const t = Number(p.currentTime);
+    if (typeof p.isPlaying !== 'boolean' || typeof p.currentTime !== 'number') return;
+    const t = p.currentTime;
     if (!Number.isFinite(t) || t < 0 || t > 86400) return;
-    r.state = { ...r.state, isPlaying: Boolean(p.isPlaying), currentTime: t, updatedAt: Date.now() };
+    r.state = { ...r.state, isPlaying: p.isPlaying, currentTime: t, updatedAt: Date.now() };
     socket.to(id).emit('video:state', r.state);
     persistRoom(r);
   }
