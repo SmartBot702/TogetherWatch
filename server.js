@@ -1,5 +1,7 @@
 const express = require('express');
 const http = require('http');
+const fs = require('fs');
+const fsp = require('fs/promises');
 const path = require('path');
 const crypto = require('crypto');
 const dns = require('dns').promises;
@@ -11,6 +13,12 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { maxHttpBufferSize: 1e6 });
 const PORT = process.env.PORT || 3000;
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '.data');
+const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
+const MAX_VIDEO_UPLOAD_BYTES = Math.max(1, Number(process.env.MAX_VIDEO_UPLOAD_MB) || 4096) * 1024 * 1024;
+const MAX_ROOM_VIDEO_BYTES = Math.max(1, Number(process.env.MAX_ROOM_VIDEO_GB) || 12) * 1024 * 1024 * 1024;
+const VIDEO_TYPES = { '.mp4': 'video/mp4', '.webm': 'video/webm', '.m4v': 'video/mp4', '.ogv': 'video/ogg' };
+const VIDEO_CHUNK_BYTES = 256 * 1024;
 const rooms = new Map();
 const roomSaveTimers = new Map();
 function persistRoom(room, immediate = false) {
@@ -45,6 +53,47 @@ if (roomPersistenceHeartbeat.unref) roomPersistenceHeartbeat.unref();
 app.disable('x-powered-by');
 app.use(express.json({ limit: '20kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+app.get('/media/:filename', async (req, res) => {
+  const filename = String(req.params.filename || '');
+  if (!/^[a-f0-9]{32}\\.(?:mp4|webm|m4v|ogv)$/.test(filename)) return res.sendStatus(404);
+  const filePath = path.join(UPLOADS_DIR, filename);
+  let stat;
+  try { stat = await fsp.stat(filePath); } catch (_) { return res.sendStatus(404); }
+  if (!stat.isFile()) return res.sendStatus(404);
+  const ext = path.extname(filename).toLowerCase();
+  const headers = {
+    'Content-Type': VIDEO_TYPES[ext] || 'application/octet-stream',
+    'Content-Length': stat.size,
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': 'private, max-age=3600',
+    'X-Content-Type-Options': 'nosniff'
+  };
+  const range = req.headers.range;
+  if (range) {
+    const match = /^bytes=(\\d*)-(\\d*)$/.exec(range);
+    if (!match || (!match[1] && !match[2])) return res.status(416).set('Content-Range', 'bytes */' + stat.size).end();
+    let start, end;
+    if (!match[1]) {
+      const suffix = Number(match[2]);
+      if (!Number.isSafeInteger(suffix) || suffix <= 0) return res.status(416).set('Content-Range', 'bytes */' + stat.size).end();
+      start = Math.max(0, stat.size - suffix); end = stat.size - 1;
+    } else {
+      start = Number(match[1]); end = match[2] ? Number(match[2]) : stat.size - 1;
+    }
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || start >= stat.size || end < start) {
+      return res.status(416).set('Content-Range', 'bytes */' + stat.size).end();
+    }
+    end = Math.min(end, stat.size - 1);
+    headers['Content-Range'] = 'bytes ' + start + '-' + end + '/' + stat.size;
+    headers['Content-Length'] = end - start + 1;
+    res.writeHead(206, headers);
+    fs.createReadStream(filePath, { start, end }).on('error', () => res.destroy()).pipe(res);
+    return;
+  }
+  res.writeHead(200, headers);
+  fs.createReadStream(filePath).on('error', () => res.destroy()).pipe(res);
+});
+
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'TogetherWatch' }));
 app.get('/api/rooms/public', (_req, res) => {
   const publicRooms = Array.from(rooms.values())
@@ -181,6 +230,7 @@ function emptyState() {
 async function validateMediaSource(p) {
   if (!p || typeof p !== 'object') return;
   const type = p.mediaType || (p.videoId ? 'youtube' : '');
+  if (type === 'uploaded') return;
   if (type !== 'file' && type !== 'hls') return;
   const raw = typeof p.mediaUrl === 'string' ? p.mediaUrl.slice(0, 2048) : '';
   // Shared media URLs are fetched by every viewer's browser, so refuse loopback,
@@ -222,6 +272,13 @@ function normalizeMedia(p) {
     if (!/^[A-Za-z0-9_-]{6,64}$/.test(id)) return null;
     return { mediaType: 'rutube', mediaId: id, mediaUrl: 'https://rutube.ru/play/embed/' + id, videoId: null };
   }
+  if (type === 'uploaded') {
+    const id = String(p.mediaId || '');
+    const ext = String(p.ext || '').toLowerCase();
+    if (!/^[a-f0-9]{32}$/.test(id) || !['mp4','webm','m4v','ogv'].includes(ext)) return null;
+    const url = '/media/' + id + '.' + ext;
+    return { mediaType: 'file', mediaId: url, mediaUrl: url, videoId: null };
+  }
   if (type === 'local') {
     const id = String(p.mediaId || '');
     if (!/^local-[a-f0-9]{16}$/.test(id)) return null;
@@ -242,6 +299,10 @@ function error(socket, message) { socket.emit('room:error', message); }
 function people(room) { return Array.from(room.members.values()).map(m => ({ id: m.id, name: m.name, isHost: m.id === room.hostId })); }
 function broadcastPeople(id) { const r = rooms.get(id); if (r) io.to(id).emit('room:people', people(r)); }
 function leave(socket) {
+  if (socket.data.movieUpload) {
+    const upload = socket.data.movieUpload; socket.data.movieUpload = null;
+    Promise.resolve(upload.handle.close()).catch(() => {}).then(() => fsp.unlink(upload.filePath).catch(() => {}));
+  }
   const id = socket.data.roomId;
   if (!id) return;
   const r = rooms.get(id);
@@ -284,7 +345,7 @@ function enter(socket, id, name, create, options = {}) {
   socket.data.roomId = id;
   socket.data.name = name;
   r.members.set(socket.id, { id: socket.id, name });
-  socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, title: r.title, theme: r.theme, state: r.state, queue: r.queue || [], chatHistory: r.messages.slice(-100), siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner, isPublic: Boolean(r.isPublic), activeActivity: r.activeActivity || 'video', activeGame: r.activeGame || 'tictactoe', game: r.game || { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 }, connectFour: r.connectFour || { board: Array.from({length:6},()=>Array(7).fill(null)), turn: 'R', winner: null, moves: 0 } });
+  socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, title: r.title, theme: r.theme, state: r.state, queue: r.queue || [], chatHistory: r.messages.slice(-100), videos: Array.isArray(r.videos) ? r.videos : [], siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner, isPublic: Boolean(r.isPublic), activeActivity: r.activeActivity || 'video', activeGame: r.activeGame || 'tictactoe', game: r.game || { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 }, connectFour: r.connectFour || { board: Array.from({length:6},()=>Array(7).fill(null)), turn: 'R', winner: null, moves: 0 } });
   for (const file of (r.files || [])) socket.emit('file:shared', file);
   for (const link of (r.links || [])) socket.emit('link:shared', link);
   socket.emit('board:history', Array.isArray(r.boardStrokes) ? r.boardStrokes.slice(-2000) : []);
@@ -602,6 +663,85 @@ io.on('connection', socket => {
     persistRoom(r);
   });
 
+
+  async function abortMovieUpload() {
+    const upload = socket.data.movieUpload;
+    if (!upload) return;
+    socket.data.movieUpload = null;
+    try { await upload.handle.close(); } catch (_) {}
+    try { await fsp.unlink(upload.filePath); } catch (_) {}
+  }
+  socket.on('video:upload:start', async (p, ack) => {
+    const reply = typeof ack === 'function' ? ack : () => {};
+    const id = socket.data.roomId, room = rooms.get(id);
+    if (!room || !room.members.has(socket.id)) return reply({ ok: false, error: 'Avval tomosha xonasiga kiring.' });
+    if (socket.data.movieUpload) return reply({ ok: false, error: 'Avvalgi video yuklanishi hali tugamadi.' });
+    const originalName = typeof (p && p.name) === 'string' ? path.basename(p.name).replace(/[^\\p{L}\\p{N}._ -]/gu, '').trim().slice(0, 120) : '';
+    const ext = path.extname(originalName).toLowerCase();
+    const size = Number(p && p.size);
+    if (!originalName || !VIDEO_TYPES[ext]) return reply({ ok: false, error: 'Faqat MP4, WebM, M4V yoki OGV video fayllari qo‘llab-quvvatlanadi.' });
+    if (!Number.isSafeInteger(size) || size < 1 || size > MAX_VIDEO_UPLOAD_BYTES) return reply({ ok: false, error: 'Video hajmi 1 baytdan ' + (MAX_VIDEO_UPLOAD_BYTES / 1024 / 1024 / 1024) + ' GB gacha bo‘lishi kerak.' });
+    room.videos = Array.isArray(room.videos) ? room.videos : [];
+    const roomBytes = room.videos.reduce((sum, file) => sum + (Number(file.size) || 0), 0);
+    if (room.videos.length >= 20 || roomBytes + size > MAX_ROOM_VIDEO_BYTES) return reply({ ok: false, error: 'Xona video saqlash limitiga yetdi.' });
+    const uploadId = crypto.randomBytes(16).toString('hex');
+    const filePath = path.join(UPLOADS_DIR, uploadId + ext);
+    try {
+      await fsp.mkdir(UPLOADS_DIR, { recursive: true });
+      const handle = await fsp.open(filePath, 'wx');
+      socket.data.movieUpload = { uploadId, roomId: id, name: originalName, ext, mime: VIDEO_TYPES[ext], size, filePath, handle, received: 0, nextIndex: 0 };
+      reply({ ok: true, uploadId, chunkSize: VIDEO_CHUNK_BYTES });
+    } catch (err) {
+      reply({ ok: false, error: 'Serverda video saqlash uchun joy yoki ruxsat yo‘q.' });
+    }
+  });
+  socket.on('video:upload:chunk', async (p, ack) => {
+    const reply = typeof ack === 'function' ? ack : () => {};
+    const upload = socket.data.movieUpload;
+    const id = socket.data.roomId, room = rooms.get(id);
+    if (!upload || !room || upload.roomId !== id || !room.members.has(socket.id)) return reply({ ok: false, error: 'Video yuklanishi topilmadi yoki xona o‘zgardi.' });
+    if (!p || p.uploadId !== upload.uploadId || p.index !== upload.nextIndex) return reply({ ok: false, error: 'Video bo‘laklari tartibi noto‘g‘ri.' });
+    let bytes;
+    try {
+      if (Buffer.isBuffer(p.data)) bytes = p.data;
+      else if (p.data instanceof ArrayBuffer) bytes = Buffer.from(p.data);
+      else if (ArrayBuffer.isView(p.data)) bytes = Buffer.from(p.data.buffer, p.data.byteOffset, p.data.byteLength);
+      else return reply({ ok: false, error: 'Video bo‘lagi noto‘g‘ri formatda.' });
+    } catch (_) { return reply({ ok: false, error: 'Video bo‘lagi o‘qilmadi.' }); }
+    if (!bytes.length || bytes.length > VIDEO_CHUNK_BYTES || upload.received + bytes.length > upload.size) return reply({ ok: false, error: 'Video bo‘lagi hajmi noto‘g‘ri.' });
+    try {
+      const result = await upload.handle.write(bytes, 0, bytes.length, upload.received);
+      if (result.bytesWritten !== bytes.length) throw new Error('Incomplete write');
+      upload.received += bytes.length;
+      upload.nextIndex += 1;
+      reply({ ok: true, received: upload.received, size: upload.size });
+    } catch (_) {
+      await abortMovieUpload();
+      reply({ ok: false, error: 'Videoni diskka yozib bo‘lmadi.' });
+    }
+  });
+  socket.on('video:upload:end', async (p, ack) => {
+    const reply = typeof ack === 'function' ? ack : () => {};
+    const upload = socket.data.movieUpload;
+    const id = socket.data.roomId, room = rooms.get(id);
+    if (!upload || !room || upload.roomId !== id || !room.members.has(socket.id) || !p || p.uploadId !== upload.uploadId) return reply({ ok: false, error: 'Video yuklanishi topilmadi.' });
+    if (upload.received !== upload.size) {
+      await abortMovieUpload();
+      return reply({ ok: false, error: 'Video to‘liq yuklanmadi. Qaytadan urinib ko‘ring.' });
+    }
+    try { await upload.handle.close(); } catch (_) {}
+    socket.data.movieUpload = null;
+    const file = { id: upload.uploadId, name: upload.name, ext: upload.ext.slice(1), mime: upload.mime, size: upload.size, by: socket.data.name, at: Date.now(), url: '/media/' + upload.uploadId + upload.ext };
+    room.videos = Array.isArray(room.videos) ? room.videos : [];
+    room.videos.push(file);
+    io.to(id).emit('video:uploaded', file);
+    persistRoom(room);
+    reply({ ok: true, file });
+  });
+  socket.on('video:upload:cancel', async p => {
+    if (socket.data.movieUpload && (!p || !p.uploadId || p.uploadId === socket.data.movieUpload.uploadId)) await abortMovieUpload();
+  });
+
   socket.on('file:share', p => {
     const id = socket.data.roomId, r = rooms.get(id);
     if (!r || !r.members.has(socket.id) || !p || typeof p.name !== 'string' || typeof p.data !== 'string') return;
@@ -785,7 +925,7 @@ io.on('connection', socket => {
     }
   });
 
-  socket.on('disconnect', () => leave(socket));
+  socket.on('disconnect', () => { abortMovieUpload().catch(() => {}); leave(socket); });
 });
 auth.attach(app, io).then(async () => {
   const savedRooms = await auth.loadRoomSnapshots();
@@ -800,7 +940,7 @@ auth.attach(app, io).then(async () => {
       messages: Array.isArray(payload.messages) ? payload.messages.slice(-100) : [],
       siteUrl: payload.siteUrl || null, siteExpanded: Boolean(payload.siteExpanded),
       title: typeof payload.title === 'string' ? payload.title : 'Tomosha xonasi', theme: cleanRoomTheme(payload.theme),
-      screenOwner: null, files: Array.isArray(payload.files) ? payload.files.filter(file => file && typeof file.id === 'string' && typeof file.name === 'string' && typeof file.mime === 'string' && typeof file.data === 'string').slice(0, 5) : [], links: Array.isArray(payload.links) ? payload.links.slice(0, 30) : [], boardStrokes: Array.isArray(payload.boardStrokes) ? payload.boardStrokes.slice(-2000) : [], isPublic: Boolean(payload.isPublic), activeActivity: ['video','site','games','board','files','screen','call','people'].includes(payload.activeActivity) ? payload.activeActivity : 'video', emptyAt: saved.emptyAt || Date.now()
+      screenOwner: null, files: Array.isArray(payload.files) ? payload.files.filter(file => file && typeof file.id === 'string' && typeof file.name === 'string' && typeof file.mime === 'string' && typeof file.data === 'string').slice(0, 5) : [], videos: Array.isArray(payload.videos) ? payload.videos.filter(file => file && /^[a-f0-9]{32}$/.test(file.id) && typeof file.name === 'string' && Number.isSafeInteger(file.size)).slice(0, 20) : [], links: Array.isArray(payload.links) ? payload.links.slice(0, 30) : [], boardStrokes: Array.isArray(payload.boardStrokes) ? payload.boardStrokes.slice(-2000) : [], isPublic: Boolean(payload.isPublic), activeActivity: ['video','site','games','board','files','screen','call','people'].includes(payload.activeActivity) ? payload.activeActivity : 'video', emptyAt: saved.emptyAt || Date.now()
     };
     rooms.set(room.id, room);
     persistRoom(room, true);
