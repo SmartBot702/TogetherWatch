@@ -92,6 +92,8 @@ $('chatText').addEventListener('input',()=>{
 socket.on('chat:message',m=>{renderChatMessage(m);scroll()});
 $('chatForm').onsubmit=e=>{e.preventDefault();const text=$('chatText').value.trim();if(text&&roomId){socket.emit('chat:send',{text});socket.emit('chat:typing',{typing:false});$('chatText').value='';clearTimeout(typingStopTimer)}};
 let renderedSiteUrl=null;
+$('openSite').textContent='Brauzerda ochish';
+$('siteStatus').textContent='Havolani ulashganda avval video oqimini aniqlashga urinadi. Oddiy sahifa bo‘lsa, xona ichida ochiladi; bloklangan sahifani har bir ishtirokchi o‘z brauzerida ochishi mumkin.';
 function renderSharedSite(url,expanded){
   siteUrl=url||null;siteExpanded=Boolean(expanded);
   const wrap=$('sharedSiteWrap');
