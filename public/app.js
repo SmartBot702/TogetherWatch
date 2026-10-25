@@ -100,6 +100,7 @@ function renderSharedSite(url,expanded){
   if(renderedSiteUrl!==siteUrl){$('sharedSiteFrame').src=siteUrl;$('siteUrlInput').value=siteUrl;renderedSiteUrl=siteUrl}
   wrap.classList.toggle('site-expanded',siteExpanded);
   $('siteExpand').textContent=siteExpanded?'Kichraytirish (hamma uchun)':'Hamma uchun kattalashtirish';
+  $('openSite').textContent='Brauzerda ochish';
   $('siteStatus').textContent='Umumiy sahifa: '+siteUrl+'. Agar sayt ichki oynada ochilmasa, “Brauzerda ochish”ni bosing. Har bir ishtirokchi sahifani o‘z brauzerida ochadi; video uchun saytning ochiq MP4/WebM/HLS havolasini ulashsangiz, ijro ham sinxronlanadi.';
 }
 $('shareSite').onclick=async()=>{
