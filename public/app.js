@@ -431,6 +431,88 @@ $('screenShare').onclick=async()=>{
 };
 $('stopScreenShare').onclick=stopScreenShare;
 
+
+let authMode='login',currentAccount=null,activeSection='home';
+function setSection(section){
+  activeSection=section;
+  const buttons={home:'navHome',friends:'navFriends',watch:'navWatch',profile:'navProfile'};
+  Object.entries(buttons).forEach(([key,id])=>$(id).setAttribute('aria-current',key===section?'true':'false'));
+  $('friendsPanel').classList.toggle('hidden',section!=='friends');
+  $('accountPanel').classList.toggle('hidden',section!=='profile'&&Boolean(currentAccount));
+  $('heroTitle').parentElement.classList.toggle('hidden',section==='friends'||section==='profile');
+  $('entry').classList.toggle('hidden',(section!=='home'&&section!=='watch')||Boolean(roomId));
+  $('how').classList.toggle('hidden',section!=='home'||Boolean(roomId));
+  if(section==='watch'&&!roomId)$('entry').classList.remove('hidden');
+  if(section==='profile')$('accountPanel').classList.remove('hidden');
+}
+$('navHome').onclick=()=>setSection('home');
+$('navFriends').onclick=()=>{setSection('friends');if(!currentAccount)$('friendsMessage').textContent='Do‘stlarni qidirish uchun akkauntga kiring.'};
+$('navWatch').onclick=()=>setSection('watch');
+$('navProfile').onclick=()=>setSection('profile');
+function showAccount(user){
+  currentAccount=user||null;
+  $('authState').textContent=user?'Akkaunt faol':'Mehmon';
+  $('accountSignedIn').classList.toggle('hidden',!user);
+  $('authForm').classList.toggle('hidden',Boolean(user));
+  if(user){
+    $('accountDisplayName').textContent=user.displayName;
+    $('accountUsername').textContent='@'+user.username;
+    $('profileDisplayName').value=user.displayName||'';
+    $('profileAvatar').value=user.avatar||'';
+    $('profileBio').value=user.bio||'';
+    $('accountAvatar').textContent=(user.displayName||user.username||'TW').slice(0,2).toUpperCase();
+    if(user.avatar){const img=document.createElement('img');img.src=user.avatar;img.alt='';img.onerror=()=>img.remove();$('accountAvatar').replaceChildren(img)}
+    else $('accountAvatar').textContent=(user.displayName||user.username||'TW').slice(0,2).toUpperCase();
+    $('nickname').value=user.displayName||user.username;
+  }
+}
+function setAuthMode(mode){
+  authMode=mode;
+  $('authDisplayName').classList.toggle('hidden',mode!=='register');
+  $('authDisplayName').required=mode==='register';
+  $('authPassword').autocomplete=mode==='register'?'new-password':'current-password';
+  $('authSubmit').textContent=mode==='register'?'Akkaunt yaratish':'Kirish';
+  $('authModeToggle').textContent=mode==='register'?'Kirishga qaytish':'Akkaunt yaratish';
+  $('authMessage').textContent='';
+}
+$('authModeToggle').onclick=()=>setAuthMode(authMode==='login'?'register':'login');
+$('authForm').onsubmit=async e=>{
+  e.preventDefault();$('authMessage').textContent='Tekshirilmoqda…';
+  const payload={username:$('authUsername').value.trim(),password:$('authPassword').value};
+  if(authMode==='register')payload.displayName=$('authDisplayName').value.trim();
+  try{
+    const response=await fetch('/api/auth/'+(authMode==='register'?'register':'login'),{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(payload)});
+    const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Xatolik yuz berdi.');
+    showAccount(data.user);$('authPassword').value='';$('authMessage').textContent='';setSection('home');
+  }catch(err){$('authMessage').textContent=err.message||'Serverga ulanib bo‘lmadi.'}
+};
+$('logoutButton').onclick=async()=>{
+  await fetch('/api/auth/logout',{method:'POST',credentials:'same-origin'}).catch(()=>{});
+  showAccount(null);setAuthMode('login');$('authMessage').textContent='Akkauntdan chiqildi.';
+};
+$('saveProfile').onclick=async()=>{
+  $('authMessage').textContent='Saqlanmoqda…';
+  try{
+    const response=await fetch('/api/auth/profile',{method:'PATCH',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({displayName:$('profileDisplayName').value,bio:$('profileBio').value,avatar:$('profileAvatar').value})});
+    const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Saqlab bo‘lmadi.');
+    showAccount(data.user);$('authMessage').textContent='Profil saqlandi.';
+  }catch(err){$('authMessage').textContent=err.message||'Saqlashda xato.'}
+};
+async function loadAccount(){
+  try{const response=await fetch('/api/auth/me',{credentials:'same-origin'});const data=await response.json();if(data.ok&&data.user)showAccount(data.user)}catch(_){}
+}
+$('searchUsers').onclick=async()=>{
+  if(!currentAccount){$('friendsMessage').textContent='Avval akkauntga kiring.';return}
+  const q=$('userSearch').value.trim();$('friendsMessage').textContent='Qidirilmoqda…';$('userResults').replaceChildren();
+  try{
+    const response=await fetch('/api/users/search?q='+encodeURIComponent(q),{credentials:'same-origin'});const data=await response.json();
+    if(!response.ok||!data.ok)throw new Error(data.error||'Qidiruv amalga oshmadi.');
+    $('friendsMessage').textContent=data.users.length?String(data.users.length)+' ta foydalanuvchi topildi.':'Foydalanuvchi topilmadi.';
+    data.users.forEach(user=>{const card=document.createElement('div');card.className='person';card.style.borderRadius='12px';card.style.padding='12px';const strong=document.createElement('strong');strong.textContent=user.displayName;const small=document.createElement('div');small.className='muted small';small.textContent='@'+user.username;card.append(strong,small);$('userResults').append(card)});
+  }catch(err){$('friendsMessage').textContent=err.message||'Qidiruvda xato.'}
+};
+loadAccount();
+
 const r=new URLSearchParams(location.search).get('room');if(r)$('roomInput').value=r.toUpperCase();
 $('year').textContent=new Date().getFullYear();
 })();
