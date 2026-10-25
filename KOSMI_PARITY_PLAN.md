@@ -5,7 +5,7 @@ This project aims to deliver a comparable watch-party experience using original 
 ## Current baseline
 
 - Room creation and joining with invite codes
-- Synchronized video sources (provider policies and browser autoplay rules apply)
+- Synchronized YouTube, Vimeo and direct MP4/WebM/HLS video sources (provider policies and browser autoplay rules apply)\n- VK Video, OK.ru and Rutube embeds, with platform-native controls where provider APIs do not allow reliable sync
 - Room chat, profiles, friends and direct messages
 - WebRTC voice/video and screen sharing (HTTPS and browser permissions required)
 - Shared browser integration (requires a configured remote Chromium endpoint)
@@ -31,4 +31,4 @@ This project aims to deliver a comparable watch-party experience using original 
 
 ## Known constraints
 
-Visual similarity does not guarantee identical behavior. Some providers block embedding, DRM-protected media cannot be relayed by this app, browser autoplay and screen-capture permissions are platform-controlled, and a shared remote browser needs a separately configured service. These limitations must be surfaced honestly in the UI.
+Visual similarity does not guarantee identical behavior. Some providers block embedding, DRM-protected media cannot be relayed by this app, browser autoplay and screen-capture permissions are platform-controlled, and a shared remote browser needs a separately configured service. VK/OK/Rutube embed playback controls may not synchronize because their cross-origin players do not expose a supported control API to this app. These limitations must be surfaced honestly in the UI.
