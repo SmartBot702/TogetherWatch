@@ -426,13 +426,14 @@ function parseMedia(raw){
     if(host==='youtu.be')id=u.pathname.split('/').filter(Boolean)[0]||null;
     else if(host==='youtube.com'||host.endsWith('.youtube.com')){
       if(u.pathname==='/watch')id=u.searchParams.get('v');
-      else if(u.pathname.startsWith('/embed/')||u.pathname.startsWith('/shorts/'))id=u.pathname.split('/')[2]||null;
+      else if(u.pathname.startsWith('/embed/')||u.pathname.startsWith('/shorts/')||u.pathname.startsWith('/live/'))id=u.pathname.split('/')[2]||null;
     }
     const requested=$('mediaType').value;
     if(id&&/^[A-Za-z0-9_-]{11}$/.test(id)&&(requested==='auto'||requested==='youtube'))return{mediaType:'youtube',mediaId:id,mediaUrl:'https://www.youtube.com/watch?v='+id,videoId:id};
     if((host==='vimeo.com'||host==='player.vimeo.com')&&($('mediaType').value==='auto'||$('mediaType').value==='vimeo')){
       const parts=u.pathname.split('/').filter(Boolean);id=parts.find(x=>/^\d{1,15}$/.test(x))||null;
-      if(id)return{mediaType:'vimeo',mediaId:id,mediaUrl:'https://player.vimeo.com/video/'+id,videoId:null};
+      const idIndex=parts.indexOf(id),pathHash=idIndex>=0?parts[idIndex+1]:null,hash=u.searchParams.get('h')||(pathHash&&/^[A-Za-z0-9]+$/.test(pathHash)?pathHash:null);
+      if(id)return{mediaType:'vimeo',mediaId:id,mediaUrl:'https://player.vimeo.com/video/'+id+(hash?'?h='+encodeURIComponent(hash):''),videoId:null};
     }
     if(($('mediaType').value==='auto'&&/\.(mp4|webm)$/i.test(u.pathname))||$('mediaType').value==='file')return{mediaType:'file',mediaId:u.href,mediaUrl:u.href,videoId:null};
     if(($('mediaType').value==='auto'||$('mediaType').value==='hls')&&/\.m3u8$/i.test(u.pathname))return{mediaType:'hls',mediaId:u.href,mediaUrl:u.href,videoId:null};
@@ -475,7 +476,7 @@ function loadMedia(next,state){
       onError:()=>{$('videoError').textContent='YouTube videosini ochib bo‘lmadi.'}
     }});
   }else if(next.mediaType==='vimeo'){
-    const frame=document.createElement('iframe');frame.id='vimeoPlayer';frame.src=next.mediaUrl+'?controls=0&title=0&byline=0&portrait=0';frame.allow='autoplay; fullscreen; picture-in-picture';frame.allowFullscreen=true;frame.title='Vimeo video';$('player').append(frame);
+    const frame=document.createElement('iframe');frame.id='vimeoPlayer';const vimeoUrl=new URL(next.mediaUrl);vimeoUrl.searchParams.set('controls','0');vimeoUrl.searchParams.set('title','0');vimeoUrl.searchParams.set('byline','0');vimeoUrl.searchParams.set('portrait','0');frame.src=vimeoUrl.href;frame.allow='autoplay; fullscreen; picture-in-picture';frame.allowFullscreen=true;frame.title='Vimeo video';$('player').append(frame);
     const init=()=>{if(!window.Vimeo||!window.Vimeo.Player){setTimeout(init,150);return}
       player=new Vimeo.Player(frame);
       player.ready().then(()=>markReady(state)).catch(()=>{$('videoError').textContent='Vimeo videosini ochib bo‘lmadi yoki video maxfiy.'});
