@@ -148,13 +148,13 @@ socket.on('site:shared',d=>{if(d&&d.url)renderSharedSite(d.url,d.expanded)});
 
 const sharedBrowserStage=$('sharedBrowserStage'), sharedBrowserImage=$('sharedBrowserImage');
 let browserFrameWidth=1280,browserFrameHeight=800,lastBrowserMove=0;
-$('startSharedBrowser').onclick=()=>{const url=$('sharedBrowserUrl').value.trim();if(!url){$('sharedBrowserStatus').textContent='Sayt manzilini kiriting.';return}$('sharedBrowserStatus').textContent='Umumiy brauzer ishga tushmoqda…';socket.emit('browser:start',{url})};
+function startSharedBrowser(){const url=$('sharedBrowserUrl').value.trim();if(!url){$('sharedBrowserStatus').textContent='Sayt manzilini kiriting.';return}$('sharedBrowserStatus').textContent='Umumiy brauzer ishga tushmoqda…';socket.emit('browser:start',{url})}\n$('startSharedBrowser').onclick=startSharedBrowser;\n$('sharedBrowserUrl').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();startSharedBrowser()}});
 $('browserBack').onclick=()=>socket.emit('browser:back');
 $('browserForward').onclick=()=>socket.emit('browser:forward');
 $('browserReload').onclick=()=>socket.emit('browser:reload');
 function browserPoint(e){const rect=sharedBrowserImage.getBoundingClientRect();return{x:Math.max(0,Math.min(browserFrameWidth,(e.clientX-rect.left)/Math.max(1,rect.width)*browserFrameWidth)),y:Math.max(0,Math.min(browserFrameHeight,(e.clientY-rect.top)/Math.max(1,rect.height)*browserFrameHeight))}}
 sharedBrowserStage.addEventListener('pointerdown',e=>{if(!sharedBrowserImage.src)return;e.preventDefault();sharedBrowserStage.focus();sharedBrowserStage.setPointerCapture?.(e.pointerId);const p=browserPoint(e);socket.emit('browser:input',{type:'down',...p,button:e.button===2?'right':'left'})});
-sharedBrowserStage.addEventListener('pointerup',e=>{if(!sharedBrowserImage.src)return;e.preventDefault();const p=browserPoint(e);socket.emit('browser:input',{type:'up',...p,button:e.button===2?'right':'left'})});
+sharedBrowserStage.addEventListener('pointerup',e=>{if(!sharedBrowserImage.src)return;e.preventDefault();const p=browserPoint(e);socket.emit('browser:input',{type:'move',...p});socket.emit('browser:input',{type:'up',...p,button:e.button===2?'right':'left'})});
 sharedBrowserStage.addEventListener('pointermove',e=>{if(!sharedBrowserImage.src)return;const now=Date.now();if(now-lastBrowserMove<35)return;lastBrowserMove=now;socket.emit('browser:input',{type:'move',...browserPoint(e)})});
 sharedBrowserStage.addEventListener('contextmenu',e=>e.preventDefault());
 sharedBrowserStage.addEventListener('wheel',e=>{if(!sharedBrowserImage.src)return;e.preventDefault();socket.emit('browser:input',{type:'wheel',dx:e.deltaX,dy:e.deltaY})},{passive:false});
