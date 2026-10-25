@@ -11,8 +11,8 @@ android {
         applicationId = "com.smartbot702.togetherwatch"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     buildTypes {
@@ -28,4 +28,11 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+}
+
+dependencies {
+    implementation("io.socket:socket.io-client:2.1.0") {
+        exclude(group = "org.json", module = "json")
+    }
+    implementation("org.webrtc:google-webrtc:1.0.32006")
 }
