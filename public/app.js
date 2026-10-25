@@ -3,7 +3,7 @@ const $=id=>document.getElementById(id);
 const socket=io();
 let rtcIceServers=[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun.cloudflare.com:3478'}];
 fetch('/api/rtc-config',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(c=>{if(c&&Array.isArray(c.iceServers)&&c.iceServers.length)rtcIceServers=c.iceServers}).catch(()=>{});
-let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null,callStream=null,siteUrl=null,siteExpanded=false,screenOwner=null,hlsInstance=null,queueItems=[],volume=1,muted=false,seekDuration=0,seeking=false,localFile=null,localFileId=null,localObjectUrl=null,subtitleObjectUrl=null,subtitleTrack=null,subtitleVttText=null,subtitleFileName=null,pendingSharedSubtitle=null,latestPlaybackState=null,endedQueueAdvanceKey=null;const peers=new Map(),callPeers=new Map(),callReady=new Set(),pendingScreenIce=new Map(),pendingCallIce=new Map(),callDisconnectTimers=new Map();
+let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null,callStream=null,siteUrl=null,siteExpanded=false,screenOwner=null,hlsInstance=null,queueItems=[],volume=1,muted=false,seekDuration=0,seeking=false,localFile=null,localFileId=null,localObjectUrl=null,subtitleObjectUrl=null,subtitleTrack=null,subtitleVttText=null,subtitleFileName=null,pendingSharedSubtitle=null,latestPlaybackState=null,endedQueueAdvanceKey=null;const peers=new Map(),callPeers=new Map(),callReady=new Set(),pendingScreenIce=new Map(),pendingCallIce=new Map(),callDisconnectTimers=new Map(),callRetryTimers=new Map(),callRetryCounts=new Map();
 
 socket.on('connect',()=>{
   $('connection').textContent='● Serverga ulandi';
@@ -988,6 +988,10 @@ function callPeer(peerId,initiator){
     if(pc.connectionState==='connected'){
       const timer=callDisconnectTimers.get(peerId);
       if(timer){clearTimeout(timer);callDisconnectTimers.delete(peerId)}
+      callRetryCounts.delete(peerId);
+      const retryTimer=callRetryTimers.get(peerId);
+      if(retryTimer){clearTimeout(retryTimer);callRetryTimers.delete(peerId)}
+      $('callStatus').textContent='Ovozli/video aloqa ulandi.';
       return;
     }
     if(pc.connectionState==='disconnected'){
@@ -1012,7 +1016,17 @@ function callPeer(peerId,initiator){
 function scheduleCallPeerRetry(peerId){
   // Only the designated offerer retries, avoiding simultaneous competing offers.
   if(!callStream||!socket.connected||!callReady.has(peerId)||socket.id.localeCompare(peerId)<=0)return;
-  setTimeout(()=>{if(callStream&&socket.connected&&callReady.has(peerId)&&!callPeers.has(peerId))syncCallPeers()},1200);
+  if(callRetryTimers.has(peerId))return;
+  const attempts=callRetryCounts.get(peerId)||0;
+  if(attempts>=3){$('callStatus').textContent='Ishtirokchi bilan aloqa tiklanmadi. Qayta urinib ko‘ring.';return}
+  const delay=1200*Math.pow(2,attempts);
+  callRetryCounts.set(peerId,attempts+1);
+  $('callStatus').textContent='Aloqa uzildi — qayta ulanishga urinilmoqda ('+(attempts+1)+'/3)…';
+  const timer=setTimeout(()=>{
+    callRetryTimers.delete(peerId);
+    if(callStream&&socket.connected&&callReady.has(peerId)&&!callPeers.has(peerId))syncCallPeers();
+  },delay);
+  callRetryTimers.set(peerId,timer);
 }
 async function syncCallPeers(){
   if(!callStream||!roomId)return;
@@ -1039,6 +1053,7 @@ async function answerCallOffer(p){
 }
 function removeCallPeer(peerId){
   const timer=callDisconnectTimers.get(peerId);if(timer){clearTimeout(timer);callDisconnectTimers.delete(peerId)}
+  const retryTimer=callRetryTimers.get(peerId);if(retryTimer){clearTimeout(retryTimer);callRetryTimers.delete(peerId)}
   const pc=callPeers.get(peerId);if(pc){try{pc.close()}catch(e){}callPeers.delete(peerId)}
   pendingCallIce.delete(peerId);
   const video=document.getElementById('call-'+peerId);if(video&&video.parentElement)video.parentElement.remove();
@@ -1073,6 +1088,8 @@ $('startCall').onclick=async()=>{
 $('stopCall').onclick=stopCall;
 function stopCall(){
   socket.emit('rtc:ready',{ready:false});callReady.delete(socket.id);
+  for(const timer of callRetryTimers.values())clearTimeout(timer);callRetryTimers.clear();callRetryCounts.clear();
+  for(const timer of callDisconnectTimers.values())clearTimeout(timer);callDisconnectTimers.clear();
   if(callStream){callStream.getTracks().forEach(t=>{try{t.stop()}catch(e){}});callStream=null}
   for(const id of Array.from(callPeers.keys()))removeCallPeer(id);
   $('localCallVideo').srcObject=null;$('localCallWrap').classList.add('hidden');$('callControls').classList.add('hidden');updateCallControls();
