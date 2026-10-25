@@ -98,14 +98,44 @@ function setChatReply(message){
   if(replyingTo)replyPreview.querySelector('#replyPreviewLabel').textContent='Javob: '+replyingTo.name+' — '+replyingTo.text.slice(0,100);
   if(replyingTo)$('chatText').focus();
 }
+function applyChatSearch(){
+  const query=($('chatSearch')?.value||'').trim().toLocaleLowerCase();
+  document.querySelectorAll('#chat .message').forEach(message=>{
+    message.classList.toggle('hidden',Boolean(query)&&!(message.dataset.searchText||'').includes(query));
+  });
+}
+function renderMentionText(node,text){
+  const parts=String(text||'').split(/(@[A-Za-z0-9_]{1,32})/g);
+  for(const part of parts){
+    if(/^@[A-Za-z0-9_]{1,32}$/.test(part)){const span=document.createElement('span');span.className='mention-token';span.textContent=part;node.append(span)}
+    else node.append(document.createTextNode(part));
+  }
+}
+function updateMentionSuggestions(){
+  const box=$('mentionSuggestions');if(!box)return;
+  const input=$('chatText'),value=input.value,match=value.slice(0,input.selectionStart).match(/@([A-Za-z0-9_]*)$/);
+  box.replaceChildren();
+  if(!match||!roomId){box.classList.add('hidden');return}
+  const query=match[1].toLocaleLowerCase();
+  const people=roomPeople.filter(person=>person.id!==socket.id).filter(person=>person.name&&person.name.trim().replace(/\\s+/g,'_').toLocaleLowerCase().startsWith(query)).slice(0,6);
+  if(!people.length){box.classList.add('hidden');return}
+  for(const person of people){
+    const token=person.name.trim().replace(/\\s+/g,'_');
+    const button=document.createElement('button');button.type='button';button.className='btn';button.textContent='@'+token;button.setAttribute('role','option');
+    button.onclick=()=>{const start=value.lastIndexOf('@',input.selectionStart-1);if(start<0)return;input.value=value.slice(0,start)+'@'+token+' '+value.slice(input.selectionStart);box.classList.add('hidden');input.focus();input.setSelectionRange(input.value.length,input.value.length)};
+    box.append(button);
+  }
+  box.classList.remove('hidden');
+}
+$('chatSearch')?.addEventListener('input',applyChatSearch);
 function renderChatMessage(m){
-  const e=document.createElement('div');e.className='message';if(m.id)e.dataset.messageId=m.id;
+  const e=document.createElement('div');e.className='message';e.dataset.searchText=(String(m.name||'')+' '+String(m.text||'')).toLocaleLowerCase();if(m.id)e.dataset.messageId=m.id;
   const header=document.createElement('div');header.className='message-header';
   const b=document.createElement('b');b.textContent=m.name;
   const time=document.createElement('time');time.className='message-time';time.dateTime=new Date(Number(m.at)||Date.now()).toISOString();time.textContent=new Date(Number(m.at)||Date.now()).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+(m.editedAt?' · tahrirlangan':'');
   header.append(b,time);
   if(m.replyTo){const quote=document.createElement('div');quote.className='muted small';quote.style.borderLeft='2px solid #9875ff';quote.style.paddingLeft='7px';quote.style.margin='4px 0';quote.textContent='↳ '+m.replyTo.name+': '+m.replyTo.text;e.append(quote)}
-  const p=document.createElement('p');p.textContent=m.text;e.append(header,p);
+  const p=document.createElement('p');renderMentionText(p,m.text);e.append(header,p);
   if(m.id){
     const actions=document.createElement('div');actions.className='row';actions.style.marginTop='6px';
     const reply=document.createElement('button');reply.type='button';reply.className='btn';reply.textContent='Javob berish';reply.style.padding='4px 8px';reply.onclick=()=>setChatReply(m);
@@ -123,7 +153,7 @@ function renderChatMessage(m){
     }
     e.append(actions);
   }
-  $('chat').append(e);
+  $('chat').append(e);applyChatSearch();
 }
 const typingUsers=new Map(),typingTimers=new Map();
 function renderTyping(){const names=Array.from(typingUsers.values());$('typingIndicator').textContent=names.length?names.join(', ')+' yozmoqda…':''}
@@ -139,6 +169,7 @@ socket.on('chat:typing',d=>{
 });
 let typingStopTimer=null,lastTypingSent=0;
 $('chatText').addEventListener('input',()=>{
+  updateMentionSuggestions();
   if(!roomId)return;
   const now=Date.now();
   if($('chatText').value.trim()&&now-lastTypingSent>700){socket.emit('chat:typing',{typing:true});lastTypingSent=now}
@@ -157,7 +188,7 @@ socket.on('chat:message:deleted',d=>{
   const old=document.querySelector('[data-message-id="'+CSS.escape(d.id)+'"]');
   if(old)old.remove();
 });
-$('chatForm').onsubmit=e=>{e.preventDefault();const text=$('chatText').value.trim();if(text&&roomId){socket.emit('chat:send',{text,...(replyingTo&&replyingTo.id?{replyTo:replyingTo.id}:{})});socket.emit('chat:typing',{typing:false});$('chatText').value='';setChatReply(null);clearTimeout(typingStopTimer)}};
+$('chatForm').onsubmit=e=>{e.preventDefault();const text=$('chatText').value.trim();if(text&&roomId){socket.emit('chat:send',{text,...(replyingTo&&replyingTo.id?{replyTo:replyingTo.id}:{})});socket.emit('chat:typing',{typing:false});$('chatText').value='';setChatReply(null);$('mentionSuggestions').classList.add('hidden');clearTimeout(typingStopTimer)}};
 let renderedSiteUrl=null;
 $('openSite').textContent='Brauzerda ochish';
 $('siteStatus').textContent='Havolani ulashganda avval video oqimini aniqlashga urinadi. Oddiy sahifa bo‘lsa, xona ichida ochiladi; bloklangan sahifani har bir ishtirokchi o‘z brauzerida ochishi mumkin.';
@@ -252,6 +283,16 @@ $('sendSharedBrowserText').onclick=()=>sendSharedBrowserText(false);
 $('submitSharedBrowserText').onclick=()=>sendSharedBrowserText(true);
 $('sharedBrowserText').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();sendSharedBrowserText(true)}});
 $('focusSharedBrowser').onclick=()=>{sharedBrowserStage.focus();$('sharedBrowserText').focus()};
+socket.on('browser:media-candidate',candidate=>{
+  if(!candidate||!candidate.url||!['file','hls'].includes(candidate.mediaType))return;
+  const panel=$('detectedMediaPanel');if(!panel)return;
+  panel.replaceChildren();
+  const label=document.createElement('span');label.className='detected-url';label.textContent='Videoning ochiq oqimi topildi: '+candidate.url;
+  const use=document.createElement('button');use.type='button';use.className='btn primary';use.textContent='Sinxron videoga ulash';
+  use.onclick=()=>{if(!isHost){$('sharedBrowserStatus').textContent='Faqat xona egasi aniqlangan oqimni ulashi mumkin.';return}socket.emit('browser:use-media',{url:candidate.url,mediaType:candidate.mediaType});$('sharedBrowserStatus').textContent='Video sinxron playerga ulanmoqda…';use.disabled=true};
+  panel.append(label,use);panel.classList.remove('hidden');
+});
+socket.on('video:loaded',()=>{$('detectedMediaPanel')?.classList.add('hidden')});
 socket.on('browser:frame',d=>{if(!d||!d.data)return;sharedBrowserImage.src=d.data;if(d.url)$('sharedBrowserUrl').value=d.url;$('sharedBrowserStatus').textContent='Ulangan. Hamma shu brauzerni ko‘ryapti.'});
 socket.on('browser:started',d=>{if(d&&d.url)$('sharedBrowserUrl').value=d.url;$('sharedBrowserStatus').textContent='Umumiy brauzer tayyor.'});
 socket.on('browser:navigated',d=>{if(d&&d.url)$('sharedBrowserUrl').value=d.url});
