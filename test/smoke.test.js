@@ -96,6 +96,20 @@ test('two clients share a room, activity selection, and chat in realtime', async
       const response = await fetch(url + asset);
       assert.equal(response.status, 200, 'asset not served: ' + asset);
     }
+
+    const registration = await fetch(url + '/api/auth/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'smoke_user', displayName: 'Smoke User', password: 'test-password-123' })
+    });
+    assert.equal(registration.status, 201, 'account registration should succeed');
+    const setCookie = registration.headers.get('set-cookie') || '';
+    const sessionCookie = setCookie.split(';')[0];
+    assert.match(sessionCookie, /^tw_session=/);
+    const meResponse = await fetch(url + '/api/auth/me', { headers: { cookie: sessionCookie } });
+    const me = await meResponse.json();
+    assert.equal(me.user.username, 'smoke_user');
+
     host = connect(url, { transports: ['websocket'], reconnection: false, timeout: 5000 });
     guest = connect(url, { transports: ['websocket'], reconnection: false, timeout: 5000 });
     await Promise.all([waitForEvent(host, 'connect'), waitForEvent(guest, 'connect')]);
