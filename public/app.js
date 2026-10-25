@@ -1,7 +1,7 @@
 (function(){
 const $=id=>document.getElementById(id);
 const socket=io();
-let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null,callStream=null;const peers=new Map(),callPeers=new Map(),callReady=new Set();
+let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null,callStream=null,siteUrl=null,siteExpanded=false,screenOwner=null;const peers=new Map(),callPeers=new Map(),callReady=new Set(),pendingScreenIce=new Map(),pendingCallIce=new Map();
 
 socket.on('connect',()=>{$('connection').textContent='● Serverga ulandi'});
 socket.on('disconnect',()=>{$('connection').textContent='● Aloqa uzildi'});
@@ -20,16 +20,16 @@ $('joinRoom').onclick=()=>{
 $('roomInput').oninput=e=>e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
 socket.on('room:error',m=>{$('entryError').textContent=m;$('videoError').textContent=m});
 socket.on('room:joined',d=>{
-  roomId=d.roomId;isHost=d.isHost;
+  roomId=d.roomId;isHost=d.isHost;siteUrl=d.siteUrl||null;siteExpanded=Boolean(d.siteExpanded);screenOwner=d.screenOwner||null;renderSharedSite(siteUrl,siteExpanded);
   $('entry').classList.add('hidden');$('how').classList.add('hidden');$('workspace').classList.remove('hidden');
   $('roomCode').textContent=roomId;$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
-  $('loadVideo').disabled=!isHost;$('youtubeUrl').disabled=!isHost;$('mediaType').disabled=!isHost;$('screenShare').disabled=!isHost;$('chat').innerHTML='';
+  $('loadVideo').disabled=!isHost;$('youtubeUrl').disabled=!isHost;$('mediaType').disabled=!isHost;$('screenShare').disabled=!!screenOwner&&screenOwner!==socket.id;$('chat').innerHTML='';
   history.replaceState({},'',location.pathname+'?room='+roomId);
   if(d.state&&(d.state.mediaType||d.state.videoId))loadMedia(normalizeState(d.state),d.state);
 });
 socket.on('room:role',d=>{
   isHost=d.isHost;$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
-  $('loadVideo').disabled=!isHost;$('youtubeUrl').disabled=!isHost;$('mediaType').disabled=!isHost;$('screenShare').disabled=!isHost;
+  $('loadVideo').disabled=!isHost;$('youtubeUrl').disabled=!isHost;$('mediaType').disabled=!isHost;$('screenShare').disabled=!!screenOwner&&screenOwner!==socket.id;
   ['playPause','back','forward'].forEach(id=>$(id).disabled=!isHost||!playerReady);
 });
 socket.on('room:people',list=>{
@@ -38,7 +38,7 @@ socket.on('room:people',list=>{
   for(const id of Array.from(peers.keys()))if(!memberIds.has(id))removePeer(id);
   for(const id of Array.from(callPeers.keys()))if(!memberIds.has(id))removeCallPeer(id);
   for(const id of Array.from(callReady))if(!memberIds.has(id))callReady.delete(id);
-  if(screenStream&&isHost)syncScreenPeers();
+  if(screenStream&&screenOwner===socket.id)syncScreenPeers();
   if(callStream)syncCallPeers();
   $('peopleCount').textContent=list.length;$('people').replaceChildren();
   list.forEach(p=>{const el=document.createElement('span');el.className='person';el.textContent=p.name+(p.isHost?' ★':'');$('people').append(el)});
@@ -51,6 +51,25 @@ socket.on('chat:message',m=>{
   const p=document.createElement('p');p.textContent=m.text;e.append(b,p);$('chat').append(e);scroll();
 });
 $('chatForm').onsubmit=e=>{e.preventDefault();const text=$('chatText').value.trim();if(text&&roomId){socket.emit('chat:send',{text});$('chatText').value=''}};
+let renderedSiteUrl=null;
+function renderSharedSite(url,expanded){
+  siteUrl=url||null;siteExpanded=Boolean(expanded);
+  const wrap=$('sharedSiteWrap');
+  if(!siteUrl){wrap.classList.add('hidden');renderedSiteUrl=null;return}
+  wrap.classList.remove('hidden');
+  if(renderedSiteUrl!==siteUrl){$('sharedSiteFrame').src=siteUrl;$('siteUrlInput').value=siteUrl;renderedSiteUrl=siteUrl}
+  wrap.classList.toggle('site-expanded',siteExpanded);
+  $('siteExpand').textContent=siteExpanded?'Kichraytirish (hamma uchun)':'Hamma uchun kattalashtirish';
+  $('siteStatus').textContent='Sayt '+siteUrl+' — ichki oynada ochilmasa, “Yangi oynada ochish” yoki ekran ulashishdan foydalaning.';
+}
+$('shareSite').onclick=()=>{
+  try{const u=new URL($('siteUrlInput').value.trim());if(!['http:','https:'].includes(u.protocol))throw new Error('protocol');socket.emit('site:share',{url:u.href})}
+  catch(e){$('siteStatus').textContent='To‘liq http:// yoki https:// havolasini kiriting.'}
+};
+$('siteExpand').onclick=()=>{if(siteUrl)socket.emit('site:expand',{expanded:!siteExpanded})};
+$('siteFullscreen').onclick=()=>{const el=$('sharedSiteFrameWrap');if(el.requestFullscreen)el.requestFullscreen().catch(()=>{$('siteStatus').textContent='To‘liq ekran rejimi brauzer tomonidan ruxsat etilmadi.'})};
+$('openSite').onclick=()=>{if(siteUrl)window.open(siteUrl,'_blank','noopener,noreferrer')};
+socket.on('site:shared',d=>{if(d&&d.url)renderSharedSite(d.url,d.expanded)});
 $('copyInvite').onclick=async()=>{
   const u=location.origin+location.pathname+'?room='+roomId;
   try{await navigator.clipboard.writeText(u);$('copyInvite').textContent='Nusxalandi ✓';setTimeout(()=>$('copyInvite').textContent='Havolani nusxalash',1500)}
@@ -197,6 +216,15 @@ setInterval(async()=>{
 },2500);
 socket.on('room:state',s=>{const next=s&&normalizeState(s);if(next){$('youtubeUrl').value=next.mediaUrl;loadMedia(next,s)}});
 
+function queueIce(kind,peerId,pc,candidate){
+  const store=kind==='call'?pendingCallIce:pendingScreenIce;
+  if(!pc.remoteDescription||!pc.remoteDescription.type){const q=store.get(peerId)||[];q.push(candidate);store.set(peerId,q);return}
+  pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(()=>{});
+}
+async function flushIce(kind,peerId,pc){
+  const store=kind==='call'?pendingCallIce:pendingScreenIce;const q=store.get(peerId)||[];store.delete(peerId);
+  for(const candidate of q){try{await pc.addIceCandidate(new RTCIceCandidate(candidate))}catch(e){}}
+}
 function createPeer(peerId,initiator){
   if(peers.has(peerId))return peers.get(peerId);
   const pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
@@ -216,7 +244,7 @@ function createPeer(peerId,initiator){
   return pc;
 }
 async function syncScreenPeers(){
-  if(!screenStream||!isHost||!roomId)return;
+  if(!screenStream||screenOwner!==socket.id||!roomId)return;
   for(const person of roomPeople){
     if(person.id===socket.id||peers.has(person.id))continue;
     try{
@@ -230,6 +258,7 @@ async function syncScreenPeers(){
 function removePeer(peerId){
   const pc=peers.get(peerId);
   if(pc){try{pc.close()}catch(e){}peers.delete(peerId)}
+  pendingScreenIce.delete(peerId);
 }
 socket.on('rtc:offer',async p=>{
   if(p&&p.kind==='call'){await answerCallOffer(p);return;}
@@ -237,6 +266,7 @@ socket.on('rtc:offer',async p=>{
   try{
     const pc=createPeer(p.from,false);
     await pc.setRemoteDescription(new RTCSessionDescription(p.offer));
+    await flushIce('screen',p.from,pc);
     const answer=await pc.createAnswer();
     await pc.setLocalDescription(answer);
     socket.emit('rtc:answer',{to:p.from,kind:'screen',answer:pc.localDescription});
@@ -244,11 +274,11 @@ socket.on('rtc:offer',async p=>{
 });
 socket.on('rtc:answer',async p=>{
   const pc=p&&p.kind==='call'?callPeers.get(p.from):p&&peers.get(p.from);if(!pc||!p.answer)return;
-  try{await pc.setRemoteDescription(new RTCSessionDescription(p.answer))}catch(e){}
+  try{await pc.setRemoteDescription(new RTCSessionDescription(p.answer));await flushIce(p.kind==='call'?'call':'screen',p.from,pc)}catch(e){}
 });
 socket.on('rtc:ice',async p=>{
   const pc=p&&p.kind==='call'?callPeers.get(p.from):p&&peers.get(p.from);if(!pc||!p.candidate)return;
-  try{await pc.addIceCandidate(new RTCIceCandidate(p.candidate))}catch(e){}
+  queueIce(p.kind==='call'?'call':'screen',p.from,pc,p.candidate);
 });
 
 function callPeer(peerId,initiator){
@@ -289,6 +319,7 @@ async function answerCallOffer(p){
   try{
     const pc=callPeer(p.from,false);
     await pc.setRemoteDescription(new RTCSessionDescription(p.offer));
+    await flushIce('call',p.from,pc);
     if(callStream)callStream.getTracks().forEach(track=>{if(!pc.getSenders().some(s=>s.track===track))pc.addTrack(track,callStream)});
     const answer=await pc.createAnswer();await pc.setLocalDescription(answer);
     socket.emit('rtc:answer',{to:p.from,kind:'call',answer:pc.localDescription});
@@ -296,6 +327,7 @@ async function answerCallOffer(p){
 }
 function removeCallPeer(peerId){
   const pc=callPeers.get(peerId);if(pc){try{pc.close()}catch(e){}callPeers.delete(peerId)}
+  pendingCallIce.delete(peerId);
   const video=document.getElementById('call-'+peerId);if(video&&video.parentElement)video.parentElement.remove();
 }
 socket.on('rtc:ready',p=>{
@@ -303,6 +335,14 @@ socket.on('rtc:ready',p=>{
   if(p.ready)callReady.add(p.from);else{callReady.delete(p.from);removeCallPeer(p.from)}
   if(callStream)syncCallPeers();
 });
+function updateCallControls(){
+  const audio=callStream&&callStream.getAudioTracks()[0],video=callStream&&callStream.getVideoTracks()[0];
+  $('toggleMic').disabled=!audio;$('toggleCamera').disabled=!video;
+  $('toggleMic').textContent=audio&&audio.enabled?'🎙 Mikrofonni o‘chirish':'🔇 Mikrofonni yoqish';
+  $('toggleCamera').textContent=video&&video.enabled?'📷 Kamerani o‘chirish':'📷 Kamerani yoqish';
+}
+$('toggleMic').onclick=()=>{const t=callStream&&callStream.getAudioTracks()[0];if(t){t.enabled=!t.enabled;updateCallControls()}};
+$('toggleCamera').onclick=()=>{const t=callStream&&callStream.getVideoTracks()[0];if(t){t.enabled=!t.enabled;updateCallControls()}};
 $('startCall').onclick=async()=>{
   if(!roomId)return;
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){$('callStatus').textContent='Bu brauzer kamera/mikrofon ruxsatini qo‘llamaydi. HTTPS orqali oching.';return}
@@ -310,6 +350,7 @@ $('startCall').onclick=async()=>{
   catch(e){try{callStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false})}
     catch(err){$('callStatus').textContent='Kamera yoki mikrofon uchun ruxsat berilmadi.';return}}
   $('localCallVideo').srcObject=callStream;
+  $('callControls').classList.remove('hidden');updateCallControls();
   $('localCallWrap').classList.remove('hidden');
   $('startCall').classList.add('hidden');$('stopCall').classList.remove('hidden');
   $('callStatus').textContent='Suhbat yoqildi. Boshqa ishtirokchilar ham suhbatga qo‘shilganda ulanadi.';
@@ -321,14 +362,24 @@ function stopCall(){
   socket.emit('rtc:ready',{ready:false});callReady.delete(socket.id);
   if(callStream){callStream.getTracks().forEach(t=>{try{t.stop()}catch(e){}});callStream=null}
   for(const id of Array.from(callPeers.keys()))removeCallPeer(id);
-  $('localCallVideo').srcObject=null;$('localCallWrap').classList.add('hidden');
+  $('localCallVideo').srcObject=null;$('localCallWrap').classList.add('hidden');$('callControls').classList.add('hidden');updateCallControls();
   $('startCall').classList.remove('hidden');$('stopCall').classList.add('hidden');
   $('callStatus').textContent='Suhbatdan chiqdingiz.';
 }
 
+socket.on('screen:started',p=>{
+  if(!p||!p.from)return;screenOwner=p.from;
+  $('screenShare').disabled=screenOwner!==socket.id;
+  $('screenStatus').textContent=screenOwner===socket.id?'Ekraningiz ulashilmoqda.':'Ekran '+(p.name||'ishtirokchi')+' tomonidan ulashilmoqda.';
+});
+socket.on('screen:error',message=>{
+  if(screenStream){screenStream.getTracks().forEach(t=>{try{t.stop()}catch(e){}});screenStream=null}
+  screenOwner=null;$('screenShare').disabled=false;$('screenShare').classList.remove('hidden');$('stopScreenShare').classList.add('hidden');
+  $('screenStatus').textContent=typeof message==='string'?message:'Ekran ulashilmadi.';
+});
 socket.on('screen:stop',p=>{
   if(!p||p.from===socket.id)return;
-  removePeer(p.from);
+  removePeer(p.from);screenOwner=null;$('screenShare').disabled=false;
   $('sharedScreen').srcObject=null;
   $('sharedScreenWrap').classList.add('hidden');
   $('screenStatus').textContent='Ekran ulashish to‘xtatildi.';
@@ -337,7 +388,7 @@ async function stopScreenShare(){
   if(screenStream){
     socket.emit('screen:stop');
     screenStream.getTracks().forEach(t=>{try{t.stop()}catch(e){}});
-    screenStream=null;
+    screenStream=null;screenOwner=null;$('screenShare').disabled=false;
   }
   for(const id of Array.from(peers.keys()))removePeer(id);
   $('sharedScreen').srcObject=null;
@@ -347,7 +398,7 @@ async function stopScreenShare(){
   $('screenStatus').textContent='Ekran ulashish to‘xtatildi.';
 }
 $('screenShare').onclick=async()=>{
-  if(!isHost){$('screenStatus').textContent='Ekranni faqat xona egasi ulashishi mumkin.';return}
+  if(screenOwner&&screenOwner!==socket.id){$('screenStatus').textContent='Boshqa ishtirokchi hozir ekran ulashyapti.';return}
   if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia){$('screenStatus').textContent='Bu brauzer ekran ulashishni qo‘llamaydi. Kompyuterdagi Chrome yoki Edge’da urinib ko‘ring.';return}
   try{
     screenStream=await navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
@@ -355,6 +406,7 @@ $('screenShare').onclick=async()=>{
     $('sharedScreenWrap').classList.remove('hidden');
     $('screenShare').classList.add('hidden');
     $('stopScreenShare').classList.remove('hidden');
+    screenOwner=socket.id;socket.emit('screen:started');
     $('screenStatus').textContent='Ekraningiz ulashilmoqda. Ovoz uzatilishi brauzer va tanlangan tabga bog‘liq.';
     screenStream.getTracks().forEach(t=>t.addEventListener('ended',stopScreenShare,{once:true}));
     await syncScreenPeers();
