@@ -603,9 +603,17 @@ io.on('connection', socket => {
   });
   socket.on('chat:send', p => {
     const id = socket.data.roomId, r = rooms.get(id);
+    if (!r || !r.members.has(socket.id)) return;
     const text = typeof (p && p.text) === 'string' ? p.text.trim().slice(0, 500) : '';
-    if (r && r.members.has(socket.id) && text) {
-      const message = { name: socket.data.name, text, at: Date.now() };
+    if (!text) return;
+    // Keep one participant from flooding the shared chat or growing room snapshots too quickly.
+    const now = Date.now();
+    let limit = socket.data.chatRate;
+    if (!limit || now - limit.startedAt >= 5000) limit = socket.data.chatRate = { startedAt: now, count: 0 };
+    if (limit.count >= 8) return error(socket, 'Juda tez-tez xabar yuboryapsiz. 5 soniya kutib qayta urinib ko‘ring.');
+    limit.count++;
+    {
+      const message = { name: socket.data.name, text, at: now };
       if (!Array.isArray(r.messages)) r.messages = [];
       r.messages.push(message);
       if (r.messages.length > 100) r.messages.splice(0, r.messages.length - 100);
