@@ -175,6 +175,14 @@ test('two clients share a room, activity selection, and chat in realtime', async
     assert.equal(loaded.mediaType, 'youtube');
     assert.equal(loaded.mediaId, 'dQw4w9WgXcQ');
 
+    // Do not broadcast media URLs that target loopback/private services.
+    const privateMediaError = waitForEvent(host, 'room:error');
+    host.emit('video:load', { mediaType: 'file', mediaUrl: 'http://127.0.0.1:8080/private.mp4' });
+    assert.match(await privateMediaError, /ochiq internet manzili/);
+    const privateQueueError = waitForEvent(guest, 'room:error');
+    guest.emit('queue:add', { mediaType: 'file', mediaUrl: 'http://localhost/private.mp4' });
+    assert.match(await privateQueueError, /ochiq internet manzili/);
+
     const playbackPromise = waitForEvent(guest, 'video:state');
     host.emit('video:state', {
       mediaType: 'youtube',
