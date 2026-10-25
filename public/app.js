@@ -473,6 +473,7 @@ function loadMedia(next,state){
     player=new YT.Player('ytPlayer',{videoId:next.mediaId,playerVars:{playsinline:1,rel:0,controls:0,disablekb:1,origin:location.origin},events:{
       onReady:()=>markReady(state),
       onStateChange:e=>{if(remote||Date.now()<remoteUntil)return;if(e.data===YT.PlayerState.ENDED){if(isHost)socket.emit('queue:next');return}if(e.data===YT.PlayerState.PLAYING||e.data===YT.PlayerState.PAUSED)emitPlayback(e.data===YT.PlayerState.PLAYING,getTime())},
+      onAutoplayBlocked:()=>{$('videoError').textContent='Brauzer avtomatik ijroni blokladi. Videoni Play tugmasi bilan qo‘lda boshlang.';$('playState').textContent='Play tugmasini bosing'},
       onError:()=>{$('videoError').textContent='YouTube videosini ochib bo‘lmadi.'}
     }});
   }else if(next.mediaType==='vimeo'){
