@@ -3,23 +3,57 @@ const path = require('path');
 const crypto = require('crypto');
 const { promisify } = require('util');
 const scrypt = promisify(crypto.scrypt);
+const { Pool } = require('pg');
 
 const dataDir = process.env.DATA_DIR || path.join(__dirname, '.data');
 const dataFile = path.join(dataDir, 'accounts.json');
+const pool = process.env.DATABASE_URL ? new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_SSL === 'disable' ? false : { rejectUnauthorized: false }
+}) : null;
 let state = { users: [], sessions: {}, friendRequests: [], friends: [], messages: [] };
 let writeQueue = Promise.resolve();
+function normalizeStore(parsed) {
+  return {
+    users: Array.isArray(parsed && parsed.users) ? parsed.users : [],
+    sessions: parsed && parsed.sessions && typeof parsed.sessions === 'object' ? parsed.sessions : {},
+    friendRequests: Array.isArray(parsed && parsed.friendRequests) ? parsed.friendRequests : [],
+    friends: Array.isArray(parsed && parsed.friends) ? parsed.friends : [],
+    messages: Array.isArray(parsed && parsed.messages) ? parsed.messages : []
+  };
+}
 
 async function load() {
+  if (pool) {
+    await pool.query('CREATE TABLE IF NOT EXISTS togetherwatch_app_state (id smallint PRIMARY KEY CHECK (id = 1), payload jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())');
+    const result = await pool.query('SELECT payload FROM togetherwatch_app_state WHERE id = 1');
+    if (result.rows[0]) {
+      state = normalizeStore(result.rows[0].payload);
+      return;
+    }
+    // One-time migration from the JSON store when PostgreSQL is first connected.
+    try { state = normalizeStore(JSON.parse(await fs.promises.readFile(dataFile, 'utf8'))); }
+    catch (e) {
+      if (e.code !== 'ENOENT') console.error('Account store migration read failed:', e.message);
+      state = normalizeStore({});
+    }
+    await pool.query('INSERT INTO togetherwatch_app_state (id, payload) VALUES (1, $1::jsonb) ON CONFLICT (id) DO NOTHING', [JSON.stringify(state)]);
+    return;
+  }
   try {
-    const parsed = JSON.parse(await fs.promises.readFile(dataFile, 'utf8'));
-    state = { users: Array.isArray(parsed.users) ? parsed.users : [], sessions: parsed.sessions || {}, friendRequests: Array.isArray(parsed.friendRequests) ? parsed.friendRequests : [], friends: Array.isArray(parsed.friends) ? parsed.friends : [], messages: Array.isArray(parsed.messages) ? parsed.messages : [] };
+    state = normalizeStore(JSON.parse(await fs.promises.readFile(dataFile, 'utf8')));
   } catch (e) {
     if (e.code !== 'ENOENT') console.error('Account store read failed:', e.message);
+    state = normalizeStore({});
     await save();
   }
 }
 async function save() {
-  writeQueue = writeQueue.then(async () => {
+  writeQueue = writeQueue.catch(() => {}).then(async () => {
+    if (pool) {
+      await pool.query('INSERT INTO togetherwatch_app_state (id, payload, updated_at) VALUES (1, $1::jsonb, now()) ON CONFLICT (id) DO UPDATE SET payload = EXCLUDED.payload, updated_at = now()', [JSON.stringify(state)]);
+      return;
+    }
     await fs.promises.mkdir(dataDir, { recursive: true });
     const temp = dataFile + '.tmp';
     await fs.promises.writeFile(temp, JSON.stringify(state), { mode: 0o600 });
