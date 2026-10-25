@@ -19,7 +19,7 @@ function name(){return $('nickname').value.trim().replace(/[<>]/g,'').slice(0,24
 function enter(kind){
   myName=name();
   if(!myName){$('entryError').textContent='Ismingizni kiriting.';return}
-  if(kind==='create')socket.emit('room:create',{name:myName});
+  if(kind==='create')socket.emit('room:create',{name:myName,title:$('roomTitleInput').value.trim()||'Tomosha xonasi',theme:'violet'});
   else socket.emit('room:join',{roomId:$('roomInput').value.trim().toUpperCase(),name:myName});
 }
 $('createRoom').onclick=()=>enter('create');
@@ -30,7 +30,7 @@ $('joinRoom').onclick=()=>{
 $('roomInput').oninput=e=>e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
 socket.on('room:error',m=>{$('entryError').textContent=m;$('videoError').textContent=m});
 socket.on('room:joined',d=>{
-  roomId=d.roomId;isHost=d.isHost;siteUrl=d.siteUrl||null;siteExpanded=Boolean(d.siteExpanded);screenOwner=d.screenOwner||null;renderSharedSite(siteUrl,siteExpanded);
+  roomId=d.roomId;isHost=d.isHost;applyRoomSettings(d.title||'Tomosha xonasi',d.theme||'violet',isHost);siteUrl=d.siteUrl||null;siteExpanded=Boolean(d.siteExpanded);screenOwner=d.screenOwner||null;renderSharedSite(siteUrl,siteExpanded);
   $('entry').classList.add('hidden');$('how').classList.add('hidden');$('workspace').classList.remove('hidden');
   $('roomCode').textContent=roomId;$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
   $('loadVideo').disabled=false;$('youtubeUrl').disabled=false;$('mediaType').disabled=false;$('screenShare').disabled=!!screenOwner&&screenOwner!==socket.id;$('chat').replaceChildren();
@@ -43,7 +43,7 @@ socket.on('room:joined',d=>{
   if(callStream){callReady.clear();callReady.add(socket.id);socket.emit('rtc:ready',{ready:true});}
 });
 socket.on('room:role',d=>{
-  isHost=d.isHost;$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
+  isHost=d.isHost;$('roomSettings').classList.toggle('hidden',!isHost);$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
   $('loadVideo').disabled=false;$('youtubeUrl').disabled=false;$('mediaType').disabled=false;$('screenShare').disabled=!!screenOwner&&screenOwner!==socket.id;
   ['playPause','back','forward'].forEach(id=>$(id).disabled=!playerReady);
 });
@@ -138,13 +138,31 @@ $('copyInvite').onclick=async()=>{
   try{await navigator.clipboard.writeText(u);$('copyInvite').textContent='Nusxalandi ✓';setTimeout(()=>$('copyInvite').textContent='Havolani nusxalash',1500)}
   catch(e){prompt('Havolani nusxalang',u)}
 };
+function applyRoomSettings(title,theme,canEdit){
+  const safeTitle=String(title||'Tomosha xonasi').slice(0,60);
+  const safeTheme=['violet','ocean','sunset','emerald'].includes(theme)?theme:'violet';
+  $('roomTitleDisplay').textContent=safeTitle;$('roomTitleEdit').value=safeTitle;$('roomThemeSelect').value=safeTheme;
+  document.body.dataset.roomTheme=safeTheme;$('roomSettings').classList.toggle('hidden',!canEdit);
+}
+$('saveRoomSettings').onclick=()=>{
+  if(!roomId||!isHost)return;
+  const title=$('roomTitleEdit').value.trim();
+  if(!title){$('roomSettingsStatus').textContent='Xona nomini kiriting.';return}
+  socket.emit('room:settings',{title,theme:$('roomThemeSelect').value});
+  $('roomSettingsStatus').textContent='Sozlamalar saqlanmoqda…';
+};
+socket.on('room:settings',d=>{
+  if(!d)return;applyRoomSettings(d.title,d.theme,isHost);
+  $('roomSettingsStatus').textContent='Xona sozlamalari yangilandi.';
+  system((d.by||'Xona egasi')+' xona ko‘rinishini o‘zgartirdi.');
+});
 $('leaveRoom').onclick=()=>{
   if(screenStream)stopScreenShare();
   if(callStream)stopCall();
   for(const id of Array.from(peers.keys()))removePeer(id);
   for(const id of Array.from(callPeers.keys()))removeCallPeer(id);
   socket.emit('room:leave');destroyPlayer();roomId=null;history.replaceState({},'',location.pathname);
-  $('workspace').classList.add('hidden');$('entry').classList.remove('hidden');$('how').classList.remove('hidden');
+  $('workspace').classList.add('hidden');$('entry').classList.remove('hidden');$('how').classList.remove('hidden');document.body.dataset.roomTheme='violet';
 };
 // Quick-launch activity cards route users to real, supported room controls.
 document.querySelectorAll('[data-launch]').forEach(button=>button.addEventListener('click',()=>{
