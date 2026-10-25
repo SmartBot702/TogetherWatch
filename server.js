@@ -747,6 +747,31 @@ io.on('connection', socket => {
     if (socket.data.movieUpload && (!p || !p.uploadId || p.uploadId === socket.data.movieUpload.uploadId)) await abortMovieUpload();
   });
 
+  socket.on('video:remove', async (p, ack) => {
+    const reply = typeof ack === 'function' ? ack : () => {};
+    const id = socket.data.roomId, room = rooms.get(id);
+    if (!room || !room.members.has(socket.id)) return reply({ ok: false, error: 'Avval tomosha xonasiga kiring.' });
+    if (room.hostId !== socket.id) return reply({ ok: false, error: 'Yuklangan kinoni faqat xona egasi o‘chira oladi.' });
+    if (!p || typeof p.id !== 'string' || !/^[a-f0-9]{32}$/.test(p.id)) return reply({ ok: false, error: 'Video identifikatori noto‘g‘ri.' });
+    const videos = Array.isArray(room.videos) ? room.videos : [];
+    const file = videos.find(item => item.id === p.id);
+    if (!file) return reply({ ok: false, error: 'Video topilmadi yoki avval o‘chirilgan.' });
+    const ext = String(file.ext || '').toLowerCase();
+    if (!['mp4', 'webm', 'm4v', 'ogv'].includes(ext)) return reply({ ok: false, error: 'Video fayl turi noto‘g‘ri.' });
+    room.videos = videos.filter(item => item.id !== p.id);
+    try { await fsp.unlink(path.join(UPLOADS_DIR, p.id + '.' + ext)); }
+    catch (err) {
+      if (err.code !== 'ENOENT') {
+        room.videos.push(file);
+        persistRoom(room);
+        return reply({ ok: false, error: 'Video faylini diskdan o‘chirib bo‘lmadi.' });
+      }
+    }
+    io.to(id).emit('video:removed', { id: p.id });
+    persistRoom(room);
+    reply({ ok: true, id: p.id });
+  });
+
   socket.on('file:share', p => {
     const id = socket.data.roomId, r = rooms.get(id);
     if (!r || !r.members.has(socket.id) || !p || typeof p.name !== 'string' || typeof p.data !== 'string') return;
