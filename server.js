@@ -418,8 +418,15 @@ async function captureSharedBrowser(room, session) {
   if (!room || room.browserSession !== session || session.capturing || session.page.isClosed()) return;
   session.capturing = true;
   try {
+    const pageUrl = session.page.url();
     const image = await session.page.screenshot({ type: 'jpeg', quality: 48, animations: 'disabled', timeout: 5000 });
-    if (room.browserSession === session && room.members.size) io.to(room.id).emit('browser:frame', { data: 'data:image/jpeg;base64,' + image.toString('base64'), url: session.page.url(), at: Date.now() });
+    // Avoid broadcasting identical frames on static pages. Keep URL in the key so navigation
+    // still reaches everyone even if two pages happen to render the same pixels.
+    const frameKey = crypto.createHash('sha1').update(pageUrl).update(image).digest('hex');
+    if (room.browserSession === session && room.members.size && frameKey !== session.lastFrameKey) {
+      session.lastFrameKey = frameKey;
+      io.to(room.id).emit('browser:frame', { data: 'data:image/jpeg;base64,' + image.toString('base64'), url: pageUrl, at: Date.now() });
+    }
   } catch (err) {
     if (room.browserSession === session) io.to(room.id).emit('browser:error', { message: 'Brauzer tasvirini olishda xatolik yuz berdi.' });
   } finally { session.capturing = false; }
