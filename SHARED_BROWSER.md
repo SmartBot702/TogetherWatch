@@ -7,6 +7,8 @@ The room's **Umumiy brauzer** is a single remote Chromium page shared by every p
 Requires Docker Compose and enough memory for Chromium (start with 2 GB RAM for light use).
 
 ```sh
+# Generate a private token, then start both services
+echo "BROWSER_TOKEN=$(openssl rand -hex 32)" > .env
 docker compose up --build -d
 ```
 
