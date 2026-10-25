@@ -812,7 +812,8 @@ io.on('connection', socket => {
     if (limit.count >= 8) return error(socket, 'Juda tez-tez xabar yuboryapsiz. 5 soniya kutib qayta urinib ko‘ring.');
     limit.count++;
     {
-      const message = { id: crypto.randomBytes(12).toString('hex'), byId: socket.id, name: socket.data.name, text, at: now };
+      const reply = p && typeof p.replyTo === 'string' ? (r.messages || []).find(m => m.id === p.replyTo) : null;
+      const message = { id: crypto.randomBytes(12).toString('hex'), byId: socket.id, name: socket.data.name, text, at: now, ...(reply ? { replyTo: { id: reply.id, name: reply.name, text: reply.text.slice(0, 180) } } : {}) };
       if (!Array.isArray(r.messages)) r.messages = [];
       r.messages.push(message);
       if (r.messages.length > 100) r.messages.splice(0, r.messages.length - 100);
