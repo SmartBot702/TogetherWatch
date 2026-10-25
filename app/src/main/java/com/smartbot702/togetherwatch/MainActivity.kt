@@ -1,7 +1,9 @@
 package com.smartbot702.togetherwatch
 
 import android.annotation.SuppressLint
+import android.Manifest
 import android.app.Activity
+import android.content.pm.PackageManager
 import android.content.Intent
 import android.os.Bundle
 import android.view.ViewGroup
@@ -66,10 +68,13 @@ class MainActivity : Activity() {
                 override fun onPermissionRequest(request: android.webkit.PermissionRequest) {
                     runOnUiThread {
                         val allowed = request.resources.filter {
-                            it == android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE ||
-                            it == android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE
+                            (it == android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE &&
+                                checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) ||
+                            (it == android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE &&
+                                checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
                         }
-                        if (allowed.isNotEmpty()) request.grant(allowed.toTypedArray()) else request.deny()
+                        if (allowed.size == request.resources.size && allowed.isNotEmpty()) request.grant(allowed.toTypedArray())
+                        else request.deny()
                     }
                 }
             }
@@ -89,6 +94,9 @@ class MainActivity : Activity() {
         setContentView(root)
         CookieManager.getInstance().setAcceptCookie(true)
         if (savedInstanceState == null) webView.loadUrl(DEFAULT_URL)
+        val missing = arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+            .filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+        if (missing.isNotEmpty()) requestPermissions(missing.toTypedArray(), 9001)
     }
 
     private fun normalizedBaseUrl(): String {
