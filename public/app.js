@@ -173,7 +173,7 @@ $('leaveRoom').onclick=()=>{
   for(const id of Array.from(peers.keys()))removePeer(id);
   for(const id of Array.from(callPeers.keys()))removeCallPeer(id);
   socket.emit('room:leave');destroyPlayer();roomId=null;history.replaceState({},'',location.pathname);
-  renderGame({board:Array(9).fill(null),turn:'X',winner:null,moves:0});setRoomTab('video');sharedFileIds.clear();$('sharedFilesList').replaceChildren();$('fileShareStatus').textContent='Bir fayl 450 KB gacha. Fayllar joriy xonada vaqtincha saqlanadi.';$('roomFileInput').value='';setSection(activeSection);refreshPublicRooms();document.body.dataset.roomTheme='violet';
+  renderGame({board:Array(9).fill(null),turn:'X',winner:null,moves:0});setRoomTab('video');sharedFileIds.clear();sharedLinkIds.clear();$('sharedLinksList').replaceChildren();$('sharedFilesList').replaceChildren();for(const [id,msg] of [['sharedLinksList','Hozircha havola yo‘q.'],['sharedFilesList','Hozircha fayl yo‘q.']]){const empty=document.createElement('div');empty.className='muted small';empty.textContent=msg;$(id).append(empty)}$('fileShareStatus').textContent='Bir fayl 450 KB gacha. Fayllar joriy xonada vaqtincha saqlanadi.';$('roomFileInput').value='';setSection(activeSection);refreshPublicRooms();document.body.dataset.roomTheme='violet';
 };
 
 let gameState={board:Array(9).fill(null),turn:'X',winner:null,moves:0};
@@ -220,6 +220,35 @@ document.querySelectorAll('[data-launch]').forEach(button=>button.addEventListen
   if(target){target.scrollIntoView({behavior:'smooth',block:'center'});if(action==='watch'||action==='browser')target.focus({preventScroll:true});else target.click()}
 }));
 
+
+
+const sharedLinkIds=new Set();
+function renderSharedLink(link){
+  if(!link||!link.id||sharedLinkIds.has(link.id))return;
+  sharedLinkIds.add(link.id);
+  const list=$('sharedLinksList'),empty=list.querySelector('.muted.small');if(empty)empty.remove();
+  const item=document.createElement('div');item.className='shared-link-item';item.dataset.sharedLinkId=link.id;
+  const info=document.createElement('div');const title=document.createElement('div');title.className='shared-link-title';title.textContent=link.title||link.url;
+  const url=document.createElement('a');url.className='shared-link-url';url.textContent=link.url;url.href=link.url;url.target='_blank';url.rel='noopener noreferrer';
+  const meta=document.createElement('div');meta.className='file-share-meta';meta.textContent=(link.by||'Ishtirokchi')+' · '+new Date(link.at||Date.now()).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  info.append(title,url,meta);
+  const actions=document.createElement('div');actions.className='shared-link-actions';
+  const open=document.createElement('a');open.className='btn';open.textContent='Ochish';open.href=link.url;open.target='_blank';open.rel='noopener noreferrer';
+  const remove=document.createElement('button');remove.className='btn';remove.type='button';remove.textContent='O‘chirish';remove.addEventListener('click',()=>{if(roomId)socket.emit('link:remove',{id:link.id})});
+  actions.append(open,remove);item.append(info,actions);list.append(item);
+}
+socket.on('link:shared',renderSharedLink);
+socket.on('link:removed',data=>{
+  if(!data||!data.id)return;sharedLinkIds.delete(data.id);
+  const item=document.querySelector('[data-shared-link-id="'+data.id+'"]');if(item)item.remove();
+  if(!$('sharedLinksList').children.length){const empty=document.createElement('div');empty.className='muted small';empty.textContent='Hozircha havola yo‘q.';$('sharedLinksList').append(empty)}
+});
+$('shareRoomLink').addEventListener('click',()=>{
+  if(!roomId){$('fileShareStatus').textContent='Avval tomosha xonasiga kiring.';return}
+  const raw=$('roomLinkUrl').value.trim();if(!raw){$('fileShareStatus').textContent='Havola kiriting.';return}
+  try{const url=new URL(raw);if(!['http:','https:'].includes(url.protocol)||url.username||url.password)throw new Error('url');socket.emit('link:add',{url:url.href,title:$('roomLinkTitle').value.trim()});$('roomLinkUrl').value='';$('roomLinkTitle').value='';$('fileShareStatus').textContent='Havola yuborilmoqda…'}
+  catch(_){$('fileShareStatus').textContent='Faqat to‘liq http:// yoki https:// havolasi qabul qilinadi.'}
+});
 
 const sharedFileIds=new Set();
 function formatBytes(bytes){return bytes<1024?bytes+' B':(bytes/1024).toFixed(1)+' KB'}

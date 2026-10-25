@@ -250,6 +250,7 @@ function enter(socket, id, name, create, options = {}) {
   r.members.set(socket.id, { id: socket.id, name });
   socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, title: r.title, theme: r.theme, state: r.state, queue: r.queue || [], chatHistory: r.messages.slice(-100), siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner, isPublic: Boolean(r.isPublic), game: r.game || { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 } });
   for (const file of (r.files || [])) socket.emit('file:shared', file);
+  for (const link of (r.links || [])) socket.emit('link:shared', link);
   for (const memberId of (r.callReady || [])) if (memberId !== socket.id) socket.emit('rtc:ready', { from: memberId, ready: true });
   socket.to(id).emit('room:system', name + ' xonaga qo‘shildi.');
   broadcastPeople(id);
@@ -305,6 +306,35 @@ io.on('connection', socket => {
     persistRoom(r);
   });
 
+
+
+  socket.on('link:add', p => {
+    const id = socket.data.roomId, r = rooms.get(id);
+    if (!r || !r.members.has(socket.id) || !p || typeof p.url !== 'string') return;
+    let url;
+    try {
+      url = new URL(p.url.slice(0, 2048));
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('invalid');
+    } catch (_) { return error(socket, 'Havola to‘liq http:// yoki https:// manzil bo‘lishi kerak.'); }
+    if (!Array.isArray(r.links)) r.links = [];
+    if (r.links.length >= 30) return error(socket, 'Xonada ko‘pi bilan 30 ta havola saqlanadi.');
+    if (r.links.some(link => link.url === url.href)) return error(socket, 'Bu havola allaqachon ro‘yxatda bor.');
+    const title = typeof p.title === 'string' ? p.title.replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) : '';
+    const link = { id: crypto.randomBytes(10).toString('hex'), title: title || url.hostname, url: url.href, by: socket.data.name, at: Date.now() };
+    r.links.push(link);
+    io.to(id).emit('link:shared', link);
+    persistRoom(r);
+  });
+  socket.on('link:remove', p => {
+    const id = socket.data.roomId, r = rooms.get(id);
+    if (!r || !r.members.has(socket.id) || !p || typeof p.id !== 'string') return;
+    const link = (r.links || []).find(item => item.id === p.id);
+    if (!link) return;
+    if (r.hostId !== socket.id && link.by !== socket.data.name) return error(socket, 'Faqat havolani yuborgan odam yoki xona egasi o‘chira oladi.');
+    r.links = r.links.filter(item => item.id !== p.id);
+    io.to(id).emit('link:removed', { id: p.id });
+    persistRoom(r);
+  });
 
   socket.on('file:share', p => {
     const id = socket.data.roomId, r = rooms.get(id);
@@ -478,7 +508,7 @@ auth.attach(app, io).then(async () => {
       messages: Array.isArray(payload.messages) ? payload.messages.slice(-100) : [],
       siteUrl: payload.siteUrl || null, siteExpanded: Boolean(payload.siteExpanded),
       title: typeof payload.title === 'string' ? payload.title : 'Tomosha xonasi', theme: cleanRoomTheme(payload.theme),
-      screenOwner: null, files: [], isPublic: Boolean(payload.isPublic), emptyAt: saved.emptyAt || Date.now()
+      screenOwner: null, files: [], links: Array.isArray(payload.links) ? payload.links.slice(0, 30) : [], isPublic: Boolean(payload.isPublic), emptyAt: saved.emptyAt || Date.now()
     };
     rooms.set(room.id, room);
     persistRoom(room, true);
