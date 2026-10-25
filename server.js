@@ -189,7 +189,9 @@ function normalizeMedia(p) {
   if (type === 'vimeo') {
     const id = String(p.mediaId || '');
     if (!/^\d{1,15}$/.test(id)) return null;
-    return { mediaType: 'vimeo', mediaId: id, mediaUrl: 'https://player.vimeo.com/video/' + id, videoId: null };
+    let mediaUrl = 'https://player.vimeo.com/video/' + id;
+    try { const source = new URL(p.mediaUrl); const hash = source.searchParams.get('h') || ''; if (source.hostname === 'player.vimeo.com' && source.pathname === '/video/' + id && /^[A-Za-z0-9]{1,64}$/.test(hash)) mediaUrl += '?h=' + encodeURIComponent(hash); } catch (_) {}
+    return { mediaType: 'vimeo', mediaId: id, mediaUrl, videoId: null };
   }
   if (type === 'file' || type === 'hls') {
     const raw = typeof p.mediaUrl === 'string' ? p.mediaUrl.slice(0, 2048) : '';
