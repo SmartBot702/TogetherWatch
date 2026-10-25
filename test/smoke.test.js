@@ -280,6 +280,12 @@ test('two clients share a room, activity selection, and chat in realtime', async
     assert.equal(playback.isPlaying, true);
     assert.equal(playback.currentTime, 12);
 
+    const driveLoadedPromise = waitForEvent(guest, 'video:loaded');
+    host.emit('video:load', { mediaType: 'gdrive', mediaId: '1AbCdEfGhIjKlmNopQrStUv' });
+    const driveVideo = await driveLoadedPromise;
+    assert.equal(driveVideo.mediaType, 'gdrive');
+    assert.equal(driveVideo.mediaUrl, 'https://drive.google.com/file/d/1AbCdEfGhIjKlmNopQrStUv/preview');
+
     // Reject string booleans and string timestamps instead of coercing them.
     let malformedPlaybackCount = 0;
     const countMalformedPlayback = () => { malformedPlaybackCount++; };
