@@ -17,7 +17,6 @@ app.disable('x-powered-by');
 app.use(express.json({ limit: '20kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'TogetherWatch' }));
-auth.attach(app).catch(err => { console.error('Account API initialization failed:', err); process.exit(1); });
 
 function publicIp(address) {
   if (net.isIP(address) === 4) {
@@ -114,7 +113,6 @@ app.get('/api/extract', async (req, res) => {
   }
 });
 
-app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 function makeCode() {
   for (const [id, room] of rooms) {
@@ -301,4 +299,7 @@ io.on('connection', socket => {
 
   socket.on('disconnect', () => leave(socket));
 });
-server.listen(PORT, '0.0.0.0', () => console.log('TogetherWatch listening on ' + PORT));
+auth.attach(app).then(() => {
+  app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+  server.listen(PORT, '0.0.0.0', () => console.log('TogetherWatch listening on ' + PORT));
+}).catch(err => { console.error('Account API initialization failed:', err); process.exit(1); });
