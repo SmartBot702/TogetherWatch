@@ -485,7 +485,7 @@ function parseMedia(raw){
     }
     const requested=$('mediaType').value;
     if((host==='drive.google.com'||host==='drive.usercontent.google.com')&&(requested==='auto'||requested==='gdrive')){
-      const match=u.pathname.match(/\\/file\\/d\\/([A-Za-z0-9_-]{10,200})/);
+      const match=u.pathname.match(/\/file\/d\/([A-Za-z0-9_-]{10,200})/);
       const driveId=match&&match[1]||u.searchParams.get('id');
       if(driveId&&/^[A-Za-z0-9_-]{10,200}$/.test(driveId))return{mediaType:'gdrive',mediaId:driveId,mediaUrl:'https://drive.google.com/file/d/'+driveId+'/preview',videoId:null};
     }
