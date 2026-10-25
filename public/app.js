@@ -449,20 +449,83 @@ $('navHome').onclick=()=>setSection('home');
 $('navFriends').onclick=()=>{setSection('friends');if(!currentAccount)$('friendsMessage').textContent='Do‘stlarni qidirish uchun akkauntga kiring.';else refreshFriends()};
 $('navWatch').onclick=()=>setSection('watch');
 $('navProfile').onclick=()=>setSection('profile');
+let activeChatUserId=null,activeChatUser=null,lastMessageSignature='';
 async function refreshFriends(){
   if(!currentAccount)return;
-  try{const r=await fetch('/api/friends',{credentials:'same-origin'});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Xatolik');
+  try{
+    const r=await fetch('/api/friends',{credentials:'same-origin'}),d=await r.json();
+    if(!r.ok||!d.ok)throw new Error(d.error||'Xatolik');
     $('friendLists').replaceChildren();
-    const heading=(label)=>{const h=document.createElement('h3');h.className='title';h.style.marginTop='14px';h.textContent=label;$('friendLists').append(h)};
-    heading('Do‘stlar');
+    const heading=label=>{const h=document.createElement('h4');h.className='muted small';h.style.margin='8px 4px 2px';h.textContent=label;$('friendLists').append(h)};
+    heading('DO‘STLAR');
     if(!d.friends.length){const p=document.createElement('div');p.className='muted small';p.textContent='Hozircha do‘st yo‘q.';$('friendLists').append(p)}
-    d.friends.forEach(u=>{const el=document.createElement('div');el.className='person';el.textContent=u.displayName+'  @'+u.username;$('friendLists').append(el)});
-    heading('Kelgan so‘rovlar');
+    d.friends.forEach(u=>{
+      const el=document.createElement('div');el.className='person';
+      const info=document.createElement('div');info.className='friend-name';
+      const strong=document.createElement('strong');strong.textContent=u.displayName;
+      const small=document.createElement('div');small.className='muted small';small.textContent='@'+u.username;
+      info.append(strong,small);
+      const btn=document.createElement('button');btn.className='btn primary';btn.textContent='Xabar';btn.onclick=()=>openDirectChat(u);
+      el.append(info,btn);$('friendLists').append(el);
+    });
+    heading('KELGAN SO‘ROVLAR');
     if(!d.incoming.length){const p=document.createElement('div');p.className='muted small';p.textContent='Yangi so‘rov yo‘q.';$('friendLists').append(p)}
-    d.incoming.forEach(item=>{const row=document.createElement('div');row.className='row';row.style.flexWrap='wrap';const label=document.createElement('span');label.textContent=item.user.displayName+' @'+item.user.username;const yes=document.createElement('button');yes.className='btn primary';yes.textContent='Qabul qilish';yes.onclick=()=>respondFriend(item.id,true);const no=document.createElement('button');no.className='btn';no.textContent='Rad etish';no.onclick=()=>respondFriend(item.id,false);row.append(label,yes,no);$('friendLists').append(row)});
+    d.incoming.forEach(item=>{
+      const row=document.createElement('div');row.className='person';
+      const label=document.createElement('span');label.textContent=item.user.displayName+' @'+item.user.username;
+      const actions=document.createElement('div');actions.className='friend-actions';
+      const yes=document.createElement('button');yes.className='btn primary';yes.textContent='Qabul';yes.onclick=()=>respondFriend(item.id,true);
+      const no=document.createElement('button');no.className='btn';no.textContent='Rad etish';no.onclick=()=>respondFriend(item.id,false);
+      actions.append(yes,no);row.append(label,actions);$('friendLists').append(row);
+    });
   }catch(e){$('friendsMessage').textContent=e.message||'Do‘stlar yuklanmadi.'}
 }
-async function respondFriend(requestId,accept){try{const r=await fetch('/api/friends/respond',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({requestId,accept})});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Xatolik');$('friendsMessage').textContent=accept?'Do‘st qo‘shildi.':'So‘rov rad etildi.';await refreshFriends()}catch(e){$('friendsMessage').textContent=e.message||'Xatolik'} }
+async function respondFriend(requestId,accept){
+  try{const r=await fetch('/api/friends/respond',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({requestId,accept})});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Xatolik');$('friendsMessage').textContent=accept?'Do‘st qo‘shildi.':'So‘rov rad etildi.';await refreshFriends()}
+  catch(e){$('friendsMessage').textContent=e.message||'Xatolik'}
+}
+function openDirectChat(user){
+  activeChatUserId=user.id;activeChatUser=user;lastMessageSignature='';
+  $('dmTitle').textContent=user.displayName;$('dmSubtitle').textContent='@'+user.username;
+  $('dmInput').disabled=false;$('dmSend').disabled=false;$('dmInput').focus();
+  loadMessages(true);
+}
+function renderMessages(messages){
+  const signature=messages.map(m=>m.id).join('|');
+  if(signature===lastMessageSignature)return;
+  lastMessageSignature=signature;
+  const box=$('dmMessages');box.replaceChildren();
+  if(!messages.length){const empty=document.createElement('div');empty.className='chat-empty';empty.textContent='Birinchi xabarni yuboring 👋';box.append(empty);return}
+  messages.forEach(m=>{
+    const bubble=document.createElement('div');bubble.className='dm-bubble'+(m.from===currentAccount.id?' mine':'');
+    const body=document.createElement('div');body.textContent=m.text;
+    const meta=document.createElement('span');meta.className='dm-meta';
+    const time=new Date(m.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    meta.textContent=(m.from===currentAccount.id?'Siz':'')+' · '+time;
+    bubble.append(body,meta);box.append(bubble);
+  });
+  box.scrollTop=box.scrollHeight;
+}
+async function loadMessages(force){
+  if(!currentAccount||!activeChatUserId)return;
+  try{
+    const r=await fetch('/api/messages/'+encodeURIComponent(activeChatUserId),{credentials:'same-origin'}),d=await r.json();
+    if(!r.ok||!d.ok)throw new Error(d.error||'Xabarlar yuklanmadi.');
+    renderMessages(d.messages);
+    if(force)$('dmError').textContent='';
+  }catch(e){$('dmError').textContent=e.message||'Xabarlar yuklanmadi.'}
+}
+$('dmForm').onsubmit=async e=>{
+  e.preventDefault();
+  const text=$('dmInput').value.trim();if(!text||!activeChatUserId)return;
+  $('dmSend').disabled=true;
+  try{
+    const r=await fetch('/api/messages/'+encodeURIComponent(activeChatUserId),{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({text})});
+    const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Xabar yuborilmadi.');
+    $('dmInput').value='';lastMessageSignature='';await loadMessages(true);
+  }catch(e){$('dmError').textContent=e.message||'Xabar yuborilmadi.'}
+  finally{$('dmSend').disabled=!activeChatUserId}
+}
 function showAccount(user){
   currentAccount=user||null;
   $('authState').textContent=user?'Akkaunt faol':'Mehmon';
@@ -478,7 +541,6 @@ function showAccount(user){
     if(user.avatar){const img=document.createElement('img');img.src=user.avatar;img.alt='';img.onerror=()=>img.remove();$('accountAvatar').replaceChildren(img)}
     else $('accountAvatar').textContent=(user.displayName||user.username||'TW').slice(0,2).toUpperCase();
     $('nickname').value=user.displayName||user.username;
-    if(activeSection==='friends')refreshFriends();
     if(activeSection==='friends')refreshFriends();
   }
 }
@@ -504,7 +566,7 @@ $('authForm').onsubmit=async e=>{
 };
 $('logoutButton').onclick=async()=>{
   await fetch('/api/auth/logout',{method:'POST',credentials:'same-origin'}).catch(()=>{});
-  showAccount(null);setAuthMode('login');$('authMessage').textContent='Akkauntdan chiqildi.';
+  showAccount(null);activeChatUserId=null;activeChatUser=null;$('dmInput').disabled=true;$('dmSend').disabled=true;$('dmTitle').textContent='Shaxsiy xabarlar';$('dmSubtitle').textContent='Suhbatni boshlash uchun do‘st tanlang.';$('dmMessages').replaceChildren();setAuthMode('login');$('authMessage').textContent='Akkauntdan chiqildi.';
 };
 $('saveProfile').onclick=async()=>{
   $('authMessage').textContent='Saqlanmoqda…';
@@ -528,7 +590,7 @@ $('searchUsers').onclick=async()=>{
   }catch(err){$('friendsMessage').textContent=err.message||'Qidiruvda xato.'}
 };
 $('userSearch').addEventListener('keydown',e=>{if(e.key==='Enter')$('searchUsers').click()});
-loadAccount();
+loadAccount();\nsetInterval(()=>{if(currentAccount&&activeChatUserId&&activeSection==='friends')loadMessages(false)},3000);
 
 const r=new URLSearchParams(location.search).get('room');if(r)$('roomInput').value=r.toUpperCase();
 $('year').textContent=new Date().getFullYear();
