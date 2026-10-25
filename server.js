@@ -726,18 +726,27 @@ io.on('connection', socket => {
   });
   socket.on('rtc:offer', p => {
     const id = socket.data.roomId, r = rooms.get(id), to = p && p.to;
-    if (!r || !r.members.has(socket.id) || !r.members.has(to) || !p.offer) return;
-    io.to(to).emit('rtc:offer', { from: socket.id, kind: p.kind === 'call' ? 'call' : 'screen', offer: p.offer });
+    const offer = p && p.offer;
+    if (!r || !r.members.has(socket.id) || !r.members.has(to) ||
+        !offer || offer.type !== 'offer' || typeof offer.sdp !== 'string' ||
+        offer.sdp.length > 200000) return;
+    io.to(to).emit('rtc:offer', { from: socket.id, kind: p.kind === 'call' ? 'call' : 'screen', offer });
   });
   socket.on('rtc:answer', p => {
     const id = socket.data.roomId, r = rooms.get(id), to = p && p.to;
-    if (!r || !r.members.has(socket.id) || !r.members.has(to) || !p.answer) return;
-    io.to(to).emit('rtc:answer', { from: socket.id, kind: p.kind === 'call' ? 'call' : 'screen', answer: p.answer });
+    const answer = p && p.answer;
+    if (!r || !r.members.has(socket.id) || !r.members.has(to) ||
+        !answer || answer.type !== 'answer' || typeof answer.sdp !== 'string' ||
+        answer.sdp.length > 200000) return;
+    io.to(to).emit('rtc:answer', { from: socket.id, kind: p.kind === 'call' ? 'call' : 'screen', answer });
   });
   socket.on('rtc:ice', p => {
     const id = socket.data.roomId, r = rooms.get(id), to = p && p.to;
-    if (!r || !r.members.has(socket.id) || !r.members.has(to) || !p.candidate) return;
-    io.to(to).emit('rtc:ice', { from: socket.id, kind: p.kind === 'call' ? 'call' : 'screen', candidate: p.candidate });
+    const candidate = p && p.candidate;
+    if (!r || !r.members.has(socket.id) || !r.members.has(to) ||
+        !candidate || typeof candidate !== 'object' ||
+        typeof candidate.candidate !== 'string' || candidate.candidate.length > 4096) return;
+    io.to(to).emit('rtc:ice', { from: socket.id, kind: p.kind === 'call' ? 'call' : 'screen', candidate });
   });
   socket.on('rtc:ready', p => {
     const id = socket.data.roomId, r = rooms.get(id);
