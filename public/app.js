@@ -67,6 +67,7 @@ socket.on('room:role',d=>{
   isHost=d.isHost;$('roomSettings').classList.toggle('hidden',!isHost);$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
   $('loadVideo').disabled=false;$('youtubeUrl').disabled=false;$('mediaType').disabled=false;$('screenShare').disabled=!!screenOwner&&screenOwner!==socket.id;
   ['playPause','back','forward'].forEach(id=>$(id).disabled=!playerReady);
+  document.querySelectorAll('.remove-shared-video').forEach(button=>{button.disabled=!isHost;button.title=isHost?'Videoni serverdan o‘chirish':'Faqat xona egasi o‘chira oladi'});
 });
 socket.on('room:people',list=>{
   roomPeople=list;
@@ -394,14 +395,32 @@ function renderSharedVideo(file){
   sharedVideoIds.add(file.id);
   const list=$('sharedVideosList');if(!list)return;
   const empty=list.querySelector('.muted.small');if(empty)empty.remove();
-  const item=document.createElement('div');item.className='file-share-item';
+  const item=document.createElement('div');item.className='file-share-item';item.dataset.videoId=file.id;
   const info=document.createElement('div');const title=document.createElement('div');title.className='file-share-name';title.textContent=file.name;
   const meta=document.createElement('div');meta.className='file-share-meta';meta.textContent=(file.by||'Ishtirokchi')+' · '+formatBytes(file.size||0)+' · '+new Date(file.at||Date.now()).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
   info.append(title,meta);
+  const actions=document.createElement('div');actions.className='row';actions.style.gap='6px';
   const watch=document.createElement('button');watch.className='btn primary';watch.type='button';watch.textContent='Birga tomosha qilish';
   watch.addEventListener('click',()=>{if(roomId)socket.emit('video:load',{mediaType:'uploaded',mediaId:file.id,ext:file.ext})});
-  item.append(info,watch);list.append(item);
+  const remove=document.createElement('button');remove.className='btn remove-shared-video';remove.type='button';remove.textContent='O‘chirish';remove.disabled=!isHost;remove.title=isHost?'Videoni serverdan o‘chirish':'Faqat xona egasi o‘chira oladi';
+  remove.addEventListener('click',()=>{
+    if(!isHost||!roomId)return;
+    if(!confirm('“'+file.name+'” videosini serverdan butunlay o‘chirasizmi?'))return;
+    remove.disabled=true;
+    socket.emit('video:remove',{id:file.id},result=>{
+      if(!result||!result.ok){remove.disabled=!isHost;$('fileShareStatus').textContent=(result&&result.error)||'Videoni o‘chirib bo‘lmadi.';return}
+      $('fileShareStatus').textContent='Video serverdan o‘chirildi.';
+    });
+  });
+  actions.append(watch,remove);item.append(info,actions);list.append(item);
 }
+socket.on('video:removed',data=>{
+  if(!data||typeof data.id!=='string')return;
+  sharedVideoIds.delete(data.id);
+  const item=$('sharedVideosList').querySelector('[data-video-id="'+data.id+'"]');if(item)item.remove();
+  if(media&&media.mediaType==='uploaded'&&media.mediaId===data.id){destroyPlayer();$('playState').textContent='Video o‘chirildi';$('videoError').textContent='Xona egasi bu videoni serverdan o‘chirdi.'}
+  if(!$('sharedVideosList').children.length){const empty=document.createElement('div');empty.className='muted small';empty.textContent='Hali kino yuklanmagan.';$('sharedVideosList').append(empty)}
+});
 socket.on('video:uploaded',file=>{renderSharedVideo(file);$('fileShareStatus').textContent='Kino yuklandi. “Birga tomosha qilish”ni bosing.'});
 $('shareMovieFile').addEventListener('click',async()=>{
   if(!roomId){$('fileShareStatus').textContent='Avval tomosha xonasiga kiring.';return}
