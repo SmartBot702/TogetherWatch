@@ -186,6 +186,11 @@ test('two clients share a room, activity selection, and chat in realtime', async
     const playback = await playbackPromise;
     assert.equal(playback.isPlaying, true);
     assert.equal(playback.currentTime, 12);
+
+    const promotedPromise = waitForEvent(guest, 'room:role');
+    host.disconnect();
+    const promoted = await promotedPromise;
+    assert.equal(promoted.isHost, true, 'the remaining member should become host when the host disconnects');
   } finally {
     if (host) host.disconnect();
     if (guest) guest.disconnect();
