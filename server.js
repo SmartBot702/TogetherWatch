@@ -236,6 +236,15 @@ io.on('connection', socket => {
     r.queue = (r.queue || []).filter(item => item.queueId !== p.queueId);
     io.to(id).emit('queue:updated', r.queue);
   });
+  socket.on('queue:next', () => {
+    const id = socket.data.roomId, r = rooms.get(id);
+    if (!r || r.hostId !== socket.id || !r.queue || !r.queue.length) return;
+    const item = r.queue.shift();
+    const { queueId, addedBy, ...media } = item;
+    r.state = { ...media, isPlaying: false, currentTime: 0, updatedAt: Date.now() };
+    io.to(id).emit('video:loaded', r.state);
+    io.to(id).emit('queue:updated', r.queue);
+  });
   socket.on('queue:play', p => {
     const id = socket.data.roomId, r = rooms.get(id);
     if (!r || !r.members.has(socket.id) || !p || typeof p.queueId !== 'string') return;
