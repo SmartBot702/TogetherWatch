@@ -30,7 +30,7 @@ $('joinRoom').onclick=()=>{
 $('roomInput').oninput=e=>e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
 socket.on('room:error',m=>{$('entryError').textContent=m;$('videoError').textContent=m});
 socket.on('room:joined',d=>{
-  roomId=d.roomId;isHost=d.isHost;applyRoomSettings(d.title||'Tomosha xonasi',d.theme||'violet',isHost);siteUrl=d.siteUrl||null;siteExpanded=Boolean(d.siteExpanded);screenOwner=d.screenOwner||null;renderSharedSite(siteUrl,siteExpanded);
+  roomId=d.roomId;isHost=d.isHost;renderGame(d.game);applyRoomSettings(d.title||'Tomosha xonasi',d.theme||'violet',isHost);siteUrl=d.siteUrl||null;siteExpanded=Boolean(d.siteExpanded);screenOwner=d.screenOwner||null;renderSharedSite(siteUrl,siteExpanded);
   $('entry').classList.add('hidden');$('how').classList.add('hidden');$('workspace').classList.remove('hidden');
   $('roomCode').textContent=roomId;$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
   $('loadVideo').disabled=false;$('youtubeUrl').disabled=false;$('mediaType').disabled=false;$('screenShare').disabled=!!screenOwner&&screenOwner!==socket.id;$('chat').replaceChildren();
@@ -162,8 +162,22 @@ $('leaveRoom').onclick=()=>{
   for(const id of Array.from(peers.keys()))removePeer(id);
   for(const id of Array.from(callPeers.keys()))removeCallPeer(id);
   socket.emit('room:leave');destroyPlayer();roomId=null;history.replaceState({},'',location.pathname);
-  $('workspace').classList.add('hidden');$('entry').classList.remove('hidden');$('how').classList.remove('hidden');document.body.dataset.roomTheme='violet';
+  renderGame({board:Array(9).fill(null),turn:'X',winner:null,moves:0});$('workspace').classList.add('hidden');$('entry').classList.remove('hidden');$('how').classList.remove('hidden');document.body.dataset.roomTheme='violet';
 };
+
+let gameState={board:Array(9).fill(null),turn:'X',winner:null,moves:0};
+function renderGame(state){
+  if(state&&Array.isArray(state.board)&&state.board.length===9)gameState={board:state.board.slice(),turn:state.turn==='O'?'O':'X',winner:state.winner||null,moves:Number(state.moves)||0};
+  document.querySelectorAll('[data-game-cell]').forEach((cell,i)=>{const mark=gameState.board[i]||'';cell.textContent=mark;cell.dataset.mark=mark;cell.disabled=!roomId||Boolean(gameState.winner)||Boolean(mark)});
+  const status=$('gameStatus');if(!status)return;
+  status.textContent=gameState.winner==='draw'?'Durrang! Qayta boshlang.':gameState.winner?gameState.winner+' g‘olib bo‘ldi!':roomId?'Navbat: '+gameState.turn+' · Istalgan ishtirokchi yurish qilishi mumkin.':'Xonaga kirgach o‘yin boshlanadi.';
+}
+document.querySelectorAll('[data-game-cell]').forEach(cell=>cell.addEventListener('click',()=>{if(roomId)socket.emit('game:move',{index:Number(cell.dataset.gameCell)})}));
+$('resetGame').addEventListener('click',()=>{if(roomId)socket.emit('game:reset')});
+socket.on('game:state',state=>renderGame(state));
+socket.on('game:error',message=>{$('gameStatus').textContent=message});
+renderGame(gameState);
+
 // Quick-launch activity cards route users to real, supported room controls.
 document.querySelectorAll('[data-launch]').forEach(button=>button.addEventListener('click',()=>{
   const action=button.dataset.launch;
