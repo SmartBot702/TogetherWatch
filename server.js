@@ -2,6 +2,8 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const crypto = require('crypto');
+const dns = require('dns').promises;
+const net = require('net');
 const { Server } = require('socket.io');
 
 const app = express();
@@ -13,6 +15,102 @@ const rooms = new Map();
 app.disable('x-powered-by');
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'TogetherWatch' }));
+
+function publicIp(address) {
+  if (net.isIP(address) === 4) {
+    const p = address.split('.').map(Number), a = p[0], b = p[1];
+    if (a === 0 || a === 10 || a === 127 || a >= 224 ||
+        (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) ||
+        (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) ||
+        (a === 198 && (b === 18 || b === 19))) return false;
+    return true;
+  }
+  if (net.isIP(address) === 6) {
+    const ip = address.toLowerCase();
+    if (ip.startsWith('::ffff:')) return publicIp(ip.slice(7));
+    return ip !== '::' && ip !== '::1' && !/^f[cd]/.test(ip) &&
+      !/^fe[89ab]/.test(ip) && !ip.startsWith('ff');
+  }
+  return false;
+}
+async function safePublicUrl(raw) {
+  let u;
+  try { u = new URL(raw); } catch (_) { throw new Error('URL noto‘g‘ri.'); }
+  if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password) throw new Error('Faqat ochiq HTTP/HTTPS saytlar qabul qilinadi.');
+  const host = u.hostname.toLowerCase();
+  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) throw new Error('Mahalliy manzil ruxsat etilmagan.');
+  const literal = net.isIP(host);
+  const addresses = literal ? [{ address: host }] : await dns.lookup(host, { all: true, verbatim: true }).catch(() => []);
+  if (!addresses.length || addresses.some(x => !publicIp(x.address))) throw new Error('Bu saytning manzili xavfsiz tekshiruvdan o‘tmadi.');
+  return u;
+}
+async function fetchPageHtml(raw) {
+  let current = await safePublicUrl(raw);
+  for (let hop = 0; hop < 4; hop++) {
+    const response = await fetch(current.href, {
+      redirect: 'manual', signal: AbortSignal.timeout(8000),
+      headers: { 'user-agent': 'TogetherWatch-LinkInspector/1.0', accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.1' }
+    });
+    if ([301,302,303,307,308].includes(response.status)) {
+      const location = response.headers.get('location');
+      if (!location) throw new Error('Sayt qayta yo‘naltirish manzilini bermadi.');
+      current = await safePublicUrl(new URL(location, current).href); continue;
+    }
+    if (!response.ok) throw new Error('Sayt sahifasini o‘qib bo‘lmadi (HTTP ' + response.status + ').');
+    const type = response.headers.get('content-type') || '';
+    if (!/text\/html|application\/xhtml\+xml/i.test(type)) throw new Error('Bu manzil HTML sahifasi emas.');
+    const reader = response.body.getReader(), chunks = []; let total = 0;
+    while (true) {
+      const { done, value } = await reader.read(); if (done) break;
+      total += value.byteLength;
+      if (total > 2 * 1024 * 1024) { await reader.cancel(); throw new Error('Sahifa hajmi juda katta.'); }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(total); let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    return { html: new TextDecoder().decode(bytes), pageUrl: current.href };
+  }
+  throw new Error('Sayt juda ko‘p marta qayta yo‘naltirdi.');
+}
+function decodeHtml(value) {
+  return String(value || '').replace(/&amp;/gi, '&').replace(/&#x2f;/gi, '/').replace(/&#47;/g, '/').replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'");
+}
+function mediaCandidates(html, pageUrl) {
+  const found = [];
+  const add = raw => {
+    if (!raw || typeof raw !== 'string') return;
+    const value = decodeHtml(raw.trim()).replace(/\\\//g, '/');
+    try {
+      const u = new URL(value, pageUrl);
+      if (['http:', 'https:'].includes(u.protocol) && /\.(mp4|webm|m3u8)$/i.test(u.pathname)) found.push(u.href);
+    } catch (_) {}
+  };
+  const tags = html.match(/<(?:video|source)\b[^>]*>/gi) || [];
+  for (const tag of tags) {
+    const m = tag.match(/\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+    if (m) add(m[1] || m[2] || m[3]);
+  }
+  const meta = html.match(/<meta\b[^>]*(?:property|name)\s*=\s*["'](?:og:video(?::url)?|twitter:player:stream|contentUrl)["'][^>]*>/gi) || [];
+  for (const tag of meta) {
+    const m = tag.match(/\bcontent\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+    if (m) add(m[1] || m[2] || m[3]);
+  }
+  const jsonUrls = html.match(/"(?:contentUrl|content_url|videoUrl|video_url)"\s*:\s*"[^"]{1,2048}"/gi) || [];
+  for (const item of jsonUrls) { const m = item.match(/:\s*"([^"]+)"/); if (m) add(m[1]); }
+  return [...new Set(found)].sort((a,b) => (/\.m3u8$/i.test(b) ? 1 : 0) - (/\.m3u8$/i.test(a) ? 1 : 0));
+}
+app.get('/api/extract', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const raw = typeof req.query.url === 'string' ? req.query.url.slice(0, 2048) : '';
+  if (!raw) return res.status(400).json({ ok: false, error: 'Sayt havolasi kerak.' });
+  try {
+    const { html, pageUrl } = await fetchPageHtml(raw), candidates = mediaCandidates(html, pageUrl);
+    return res.json({ ok: true, pageUrl, mediaUrl: candidates[0] || null, mediaType: candidates[0] && /\.m3u8$/i.test(new URL(candidates[0]).pathname) ? 'hls' : 'file', candidates: candidates.length });
+  } catch (err) {
+    return res.status(422).json({ ok: false, error: err && err.message ? err.message : 'Sahifadan video havolasini topib bo‘lmadi.' });
+  }
+});
+
 app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 function makeCode() {
@@ -42,12 +140,13 @@ function normalizeMedia(p) {
     if (!/^\d{1,15}$/.test(id)) return null;
     return { mediaType: 'vimeo', mediaId: id, mediaUrl: 'https://player.vimeo.com/video/' + id, videoId: null };
   }
-  if (type === 'file') {
+  if (type === 'file' || type === 'hls') {
     const raw = typeof p.mediaUrl === 'string' ? p.mediaUrl.slice(0, 2048) : '';
     try {
       const u = new URL(raw);
-      if (!['http:', 'https:'].includes(u.protocol) || !/\.(mp4|webm)$/i.test(u.pathname)) return null;
-      return { mediaType: 'file', mediaId: raw, mediaUrl: raw, videoId: null };
+      const okPath = type === 'hls' ? /\.m3u8$/i.test(u.pathname) : /\.(mp4|webm)$/i.test(u.pathname);
+      if (!['http:', 'https:'].includes(u.protocol) || !okPath) return null;
+      return { mediaType: type, mediaId: raw, mediaUrl: raw, videoId: null };
     } catch (_) { return null; }
   }
   return null;
