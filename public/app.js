@@ -68,12 +68,16 @@ function renderChatMessage(m){
   header.append(b,time);
   const p=document.createElement('p');p.textContent=m.text;e.append(header,p);$('chat').append(e);
 }
-const typingUsers=new Map();
+const typingUsers=new Map(),typingTimers=new Map();
 function renderTyping(){const names=Array.from(typingUsers.values());$('typingIndicator').textContent=names.length?names.join(', ')+' yozmoqda…':''}
 socket.on('chat:typing',d=>{
   if(!d||!d.from||d.from===socket.id)return;
-  if(d.typing){typingUsers.set(d.from,d.name||'Ishtirokchi');clearTimeout(typingUsers.get(d.from+'-timer'));const timer=setTimeout(()=>{typingUsers.delete(d.from);renderTyping()},1800);typingUsers.set(d.from+'-timer',timer)}
-  else{const timer=typingUsers.get(d.from+'-timer');if(timer)clearTimeout(timer);typingUsers.delete(d.from);typingUsers.delete(d.from+'-timer')}
+  const previous=typingTimers.get(d.from);if(previous)clearTimeout(previous);
+  if(d.typing){
+    typingUsers.set(d.from,d.name||'Ishtirokchi');
+    const timer=setTimeout(()=>{typingUsers.delete(d.from);typingTimers.delete(d.from);renderTyping()},1800);
+    typingTimers.set(d.from,timer);
+  }else{typingUsers.delete(d.from);typingTimers.delete(d.from)}
   renderTyping();
 });
 let typingStopTimer=null,lastTypingSent=0;
