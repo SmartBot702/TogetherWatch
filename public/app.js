@@ -173,7 +173,7 @@ $('leaveRoom').onclick=()=>{
   for(const id of Array.from(peers.keys()))removePeer(id);
   for(const id of Array.from(callPeers.keys()))removeCallPeer(id);
   socket.emit('room:leave');destroyPlayer();roomId=null;history.replaceState({},'',location.pathname);
-  renderGame({board:Array(9).fill(null),turn:'X',winner:null,moves:0});setRoomTab('video');sharedFileIds.clear();sharedLinkIds.clear();$('sharedLinksList').replaceChildren();$('sharedFilesList').replaceChildren();$('fileShareStatus').textContent='Bir fayl 450 KB gacha. Fayllar joriy xonada vaqtincha saqlanadi.';$('roomFileInput').value='';setSection(activeSection);refreshPublicRooms();document.body.dataset.roomTheme='violet';
+  renderGame({board:Array(9).fill(null),turn:'X',winner:null,moves:0});setRoomTab('video');sharedFileIds.clear();sharedLinkIds.clear();$('sharedLinksList').replaceChildren();$('sharedFilesList').replaceChildren();for(const [id,msg] of [['sharedLinksList','Hozircha havola yo‘q.'],['sharedFilesList','Hozircha fayl yo‘q.']]){const empty=document.createElement('div');empty.className='muted small';empty.textContent=msg;$(id).append(empty)}$('fileShareStatus').textContent='Bir fayl 450 KB gacha. Fayllar joriy xonada vaqtincha saqlanadi.';$('roomFileInput').value='';setSection(activeSection);refreshPublicRooms();document.body.dataset.roomTheme='violet';
 };
 
 let gameState={board:Array(9).fill(null),turn:'X',winner:null,moves:0};
