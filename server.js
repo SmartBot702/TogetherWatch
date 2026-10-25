@@ -251,7 +251,8 @@ function enter(socket, id, name, create, options = {}) {
   socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, title: r.title, theme: r.theme, state: r.state, queue: r.queue || [], chatHistory: r.messages.slice(-100), siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner, isPublic: Boolean(r.isPublic), game: r.game || { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 } });
   for (const file of (r.files || [])) socket.emit('file:shared', file);
   for (const link of (r.links || [])) socket.emit('link:shared', link);
-  socket.emit('board:history', Array.isArray(r.boardStrokes) ? r.boardStrokes.slice(-2000) : []);\n  if (r.browserSession) { socket.emit('browser:started', { url: r.browserSession.page.url() }); captureSharedBrowser(r, r.browserSession).catch(() => {}); }
+  socket.emit('board:history', Array.isArray(r.boardStrokes) ? r.boardStrokes.slice(-2000) : []);
+  if (r.browserSession) { socket.emit('browser:started', { url: r.browserSession.page.url() }); captureSharedBrowser(r, r.browserSession).catch(() => {}); }
   for (const memberId of (r.callReady || [])) if (memberId !== socket.id) socket.emit('rtc:ready', { from: memberId, ready: true });
   socket.to(id).emit('room:system', name + ' xonaga qo‘shildi.');
   broadcastPeople(id);
