@@ -19,7 +19,7 @@ function name(){return $('nickname').value.trim().replace(/[<>]/g,'').slice(0,24
 function enter(kind){
   myName=name();
   if(!myName){$('entryError').textContent='Ismingizni kiriting.';return}
-  if(kind==='create')socket.emit('room:create',{name:myName,title:$('roomTitleInput').value.trim()||'Tomosha xonasi',theme:'violet'});
+  if(kind==='create')socket.emit('room:create',{name:myName,title:$('roomTitleInput').value.trim()||'Tomosha xonasi',theme:'violet',isPublic:$('roomPublicInput').checked});
   else socket.emit('room:join',{roomId:$('roomInput').value.trim().toUpperCase(),name:myName});
 }
 $('createRoom').onclick=()=>enter('create');
@@ -30,7 +30,7 @@ $('joinRoom').onclick=()=>{
 $('roomInput').oninput=e=>e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
 socket.on('room:error',m=>{$('entryError').textContent=m;$('videoError').textContent=m});
 socket.on('room:joined',d=>{
-  roomId=d.roomId;isHost=d.isHost;renderGame(d.game);applyRoomSettings(d.title||'Tomosha xonasi',d.theme||'violet',isHost);siteUrl=d.siteUrl||null;siteExpanded=Boolean(d.siteExpanded);screenOwner=d.screenOwner||null;renderSharedSite(siteUrl,siteExpanded);
+  roomId=d.roomId;isHost=d.isHost;$('publicRoomsPanel').classList.add('hidden');renderGame(d.game);applyRoomSettings(d.title||'Tomosha xonasi',d.theme||'violet',isHost);siteUrl=d.siteUrl||null;siteExpanded=Boolean(d.siteExpanded);screenOwner=d.screenOwner||null;renderSharedSite(siteUrl,siteExpanded);
   $('entry').classList.add('hidden');$('how').classList.add('hidden');$('workspace').classList.remove('hidden');
   $('roomCode').textContent=roomId;$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
   $('loadVideo').disabled=false;$('youtubeUrl').disabled=false;$('mediaType').disabled=false;$('screenShare').disabled=!!screenOwner&&screenOwner!==socket.id;$('chat').replaceChildren();
@@ -162,7 +162,7 @@ $('leaveRoom').onclick=()=>{
   for(const id of Array.from(peers.keys()))removePeer(id);
   for(const id of Array.from(callPeers.keys()))removeCallPeer(id);
   socket.emit('room:leave');destroyPlayer();roomId=null;history.replaceState({},'',location.pathname);
-  renderGame({board:Array(9).fill(null),turn:'X',winner:null,moves:0});$('workspace').classList.add('hidden');$('entry').classList.remove('hidden');$('how').classList.remove('hidden');document.body.dataset.roomTheme='violet';
+  renderGame({board:Array(9).fill(null),turn:'X',winner:null,moves:0});$('publicRoomsPanel').classList.remove('hidden');$('workspace').classList.add('hidden');$('entry').classList.remove('hidden');refreshPublicRooms();$('how').classList.remove('hidden');document.body.dataset.roomTheme='violet';
 };
 
 let gameState={board:Array(9).fill(null),turn:'X',winner:null,moves:0};
@@ -177,6 +177,27 @@ $('resetGame').addEventListener('click',()=>{if(roomId)socket.emit('game:reset')
 socket.on('game:state',state=>renderGame(state));
 socket.on('game:error',message=>{$('gameStatus').textContent=message});
 renderGame(gameState);
+
+
+async function refreshPublicRooms(){
+  const list=$('publicRoomsList');if(!list)return;
+  list.replaceChildren();const loading=document.createElement('div');loading.className='muted small';loading.textContent='Ommaviy xonalar yuklanmoqda…';list.append(loading);
+  try{
+    const response=await fetch('/api/rooms/public',{cache:'no-store'});if(!response.ok)throw new Error('HTTP '+response.status);
+    const data=await response.json();list.replaceChildren();
+    if(!data.ok||!Array.isArray(data.rooms)||!data.rooms.length){const empty=document.createElement('div');empty.className='muted small';empty.textContent='Hozircha ommaviy xona yo‘q. Xona yaratib, uni ommaviy qiling.';list.append(empty);return}
+    data.rooms.forEach(room=>{
+      const card=document.createElement('div');card.className='public-room';
+      const info=document.createElement('div');const title=document.createElement('div');title.className='public-room-title';title.textContent=room.title;
+      const meta=document.createElement('div');meta.className='public-room-meta';meta.textContent=room.count+'/'+room.capacity+' ishtirokchi · '+room.id;
+      info.append(title,meta);const join=document.createElement('button');join.className='btn primary';join.type='button';join.textContent='Kirish';
+      join.addEventListener('click',()=>{const n=name();if(!n){$('entryError').textContent='Avval ismingizni kiriting.';$('nickname').focus();$('entry').scrollIntoView({behavior:'smooth',block:'center'});return}$('roomInput').value=room.id;enter('join')});
+      card.append(info,join);list.append(card);
+    });
+  }catch(_){list.replaceChildren();const error=document.createElement('div');error.className='error small';error.textContent='Ommaviy xonalarni yuklab bo‘lmadi. Qayta urinib ko‘ring.';list.append(error)}
+}
+$('refreshPublicRooms').addEventListener('click',refreshPublicRooms);
+refreshPublicRooms();
 
 // Quick-launch activity cards route users to real, supported room controls.
 document.querySelectorAll('[data-launch]').forEach(button=>button.addEventListener('click',()=>{
