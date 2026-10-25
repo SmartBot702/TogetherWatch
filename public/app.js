@@ -435,6 +435,23 @@ function parseMedia(raw){
       const idIndex=parts.indexOf(id),pathHash=idIndex>=0?parts[idIndex+1]:null,hash=u.searchParams.get('h')||(pathHash&&/^[A-Za-z0-9]+$/.test(pathHash)?pathHash:null);
       if(id)return{mediaType:'vimeo',mediaId:id,mediaUrl:'https://player.vimeo.com/video/'+id+(hash?'?h='+encodeURIComponent(hash):''),videoId:null};
     }
+    if((host==='vk.com'||host==='m.vk.com'||host==='vkvideo.ru'||host==='m.vkvideo.ru')&&($('mediaType').value==='auto'||$('mediaType').value==='vk')){
+      let oid=null,video=null;
+      const extOid=u.searchParams.get('oid'),extId=u.searchParams.get('id');
+      if(u.pathname==='/video_ext.php'&&/^-?\d{1,15}$/.test(extOid||'')&&/^\d{1,20}$/.test(extId||'')){oid=extOid;video=extId}
+      if(!video){
+        const match=u.pathname.match(/\/video(-?\d{1,15})_(\d{1,20})/);
+        if(match){oid=match[1];video=match[2]}
+      }
+      if(oid!==null&&video!==null){
+        const mediaId=oid+'_'+video,hash=u.searchParams.get('hash')||'';
+        return{mediaType:'vk',mediaId,mediaUrl:'https://vk.com/video_ext.php?oid='+encodeURIComponent(oid)+'&id='+encodeURIComponent(video)+(hash&&/^[A-Za-z0-9_-]{1,128}$/.test(hash)?'&hash='+encodeURIComponent(hash):''),videoId:null};
+      }
+    }
+    if((host==='ok.ru'||host==='m.ok.ru')&&($('mediaType').value==='auto'||$('mediaType').value==='ok')){
+      const match=u.pathname.match(/\/video(?:embed)?\/(\d{1,24})/);
+      if(match)return{mediaType:'ok',mediaId:match[1],mediaUrl:'https://ok.ru/videoembed/'+match[1],videoId:null};
+    }
     if(($('mediaType').value==='auto'&&/\.(mp4|webm)$/i.test(u.pathname))||$('mediaType').value==='file')return{mediaType:'file',mediaId:u.href,mediaUrl:u.href,videoId:null};
     if(($('mediaType').value==='auto'||$('mediaType').value==='hls')&&/\.m3u8$/i.test(u.pathname))return{mediaType:'hls',mediaId:u.href,mediaUrl:u.href,videoId:null};
     return null;
@@ -493,6 +510,23 @@ function loadMedia(next,state){
       player.on('pause',()=>{if(!remote&&Date.now()>=remoteUntil)getTimeAsync().then(t=>emitPlayback(false,t))});
        player.on('ended',advanceQueueOnEnded);
     };init();
+  }else if(next.mediaType==='vk'||next.mediaType==='ok'){
+    const frame=document.createElement('iframe');
+    frame.id=next.mediaType==='vk'?'vkPlayer':'okPlayer';
+    frame.src=next.mediaUrl;
+    frame.title=next.mediaType==='vk'?'VK Video':'OK video';
+    frame.allow='autoplay; fullscreen; picture-in-picture; encrypted-media';
+    frame.allowFullscreen=true;
+    frame.referrerPolicy='no-referrer-when-downgrade';
+    frame.style.width='100%';frame.style.height='100%';frame.style.position='absolute';frame.style.inset='0';frame.style.border='0';
+    $('player').append(frame);
+    player=frame;
+    playerReady=true;
+    $('placeholder').classList.add('hidden');
+    ['videoFullscreen'].forEach(k=>$(k).disabled=false);
+    $('playPause').disabled=true;$('back').disabled=true;$('forward').disabled=true;$('muteToggle').disabled=true;$('volume').disabled=true;$('seekRange').disabled=true;
+    $('playState').textContent='Platforma playeri';
+    $('videoError').textContent='VK/OK playeri ochildi. Platforma ruxsat bersa, video ko‘rish mumkin. Ularning tashqi playeri sinxron Play/Pause va vaqt boshqaruvini bermagani uchun bu saytlar uchun faqat video ochilishi umumiylashtiriladi.';
   }else if(next.mediaType==='local'||next.mediaType==='file'||next.mediaType==='hls'){
     if(next.mediaType==='local'&&(!localObjectUrl||localFileId!==next.mediaId)){$('placeholder').classList.remove('hidden');$('playState').textContent='Mahalliy fayl kerak';$('videoError').textContent='Bu xonadagi videoni ko‘rish uchun “Mahalliy video” tugmasini bosib, aynan bir xil faylni tanlang.';$('localVideoHint').textContent='Kerakli fayl: '+next.mediaId+' — fayl nomi, hajmi va sanasi mos bo‘lishi kerak.';return}
     const video=document.createElement('video');video.id='filePlayer';video.playsInline=true;video.preload='auto';video.controls=false;video.style.width='100%';video.style.height='100%';video.style.position='absolute';video.style.inset='0';if(next.mediaType==='hls')video.crossOrigin='anonymous';$('player').append(video);player=video;
