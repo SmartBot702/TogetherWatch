@@ -2,7 +2,7 @@
   "name": "togetherwatch",
   "version": "1.0.0",
   "private": true,
-  "description": "Synchronized YouTube watch parties with room chat",
+  "description": "Watch together platform with accounts, profiles, chat and synchronized media",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

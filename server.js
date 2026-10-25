@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const dns = require('dns').promises;
 const net = require('net');
 const { Server } = require('socket.io');
+const auth = require('./auth');
 
 const app = express();
 const server = http.createServer(app);
@@ -13,6 +14,7 @@ const PORT = process.env.PORT || 3000;
 const rooms = new Map();
 
 app.disable('x-powered-by');
+app.use(express.json({ limit: '20kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'TogetherWatch' }));
 
@@ -111,7 +113,6 @@ app.get('/api/extract', async (req, res) => {
   }
 });
 
-app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 function makeCode() {
   for (const [id, room] of rooms) {
@@ -298,4 +299,7 @@ io.on('connection', socket => {
 
   socket.on('disconnect', () => leave(socket));
 });
-server.listen(PORT, '0.0.0.0', () => console.log('TogetherWatch listening on ' + PORT));
+auth.attach(app).then(() => {
+  app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+  server.listen(PORT, '0.0.0.0', () => console.log('TogetherWatch listening on ' + PORT));
+}).catch(err => { console.error('Account API initialization failed:', err); process.exit(1); });

@@ -17,6 +17,12 @@ Open http://localhost:3000. Test with two browser tabs or devices. Use a YouTube
 2. In Render, choose **New + → Blueprint** and select this repository.
 3. Render reads \`render.yaml\` and deploys the web service. After deployment, open the service URL.
 
+## Accounts and profiles
+- Username/password registration and login with scrypt password hashing and HTTP-only session cookies
+- Editable display name, bio, and HTTPS avatar URL
+- Search other registered users by username or display name
+- Account data is stored in `.data/accounts.json` by default; set `DATA_DIR` to a persistent mounted directory in deployment. Render's default filesystem is ephemeral, so durable production accounts require a persistent disk or database.
+
 ## Included
 - Responsive Uzbek UI
 - Room creation/joining, 6-character invite codes and shareable links
