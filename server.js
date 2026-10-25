@@ -65,6 +65,7 @@ function leave(socket) {
   const m = r.members.get(socket.id);
   io.to(id).emit('rtc:ready', { from: socket.id, ready: false });
   if (r.callReady) r.callReady.delete(socket.id);
+  if (r.screenOwner === socket.id) { r.screenOwner = null; io.to(id).emit('screen:stop', { from: socket.id }); }
   r.members.delete(socket.id);
   if (m) io.to(id).emit('room:system', m.name + ' xonadan chiqdi.');
   if (r.hostId === socket.id) {
@@ -83,7 +84,7 @@ function leave(socket) {
 function enter(socket, id, name, create) {
   if (!name) return error(socket, 'Ismingizni kiriting.');
   let r = rooms.get(id);
-  if (!r && create) { r = { id, hostId: socket.id, members: new Map(), callReady: new Set(), state: emptyState() }; rooms.set(id, r); }
+  if (!r && create) { r = { id, hostId: socket.id, members: new Map(), callReady: new Set(), state: emptyState(), siteUrl: null, siteExpanded: false, screenOwner: null }; rooms.set(id, r); }
   if (!r) return error(socket, 'Xona topilmadi. Kodni tekshiring.');
   if (r.members.size >= 20) return error(socket, 'Xona to‘la (maksimal 20 kishi).');
   if (Array.from(r.members.values()).some(m => m.name.toLowerCase() === name.toLowerCase())) return error(socket, 'Bu ism allaqachon ishlatilmoqda.');
@@ -93,7 +94,7 @@ function enter(socket, id, name, create) {
   socket.data.roomId = id;
   socket.data.name = name;
   r.members.set(socket.id, { id: socket.id, name });
-  socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, state: r.state });
+  socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, state: r.state, siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner });
   for (const memberId of (r.callReady || [])) if (memberId !== socket.id) socket.emit('rtc:ready', { from: memberId, ready: true });
   socket.to(id).emit('room:system', name + ' xonaga qo‘shildi.');
   broadcastPeople(id);
@@ -142,6 +143,29 @@ io.on('connection', socket => {
   socket.on('video:state', playback);
   socket.on('video:heartbeat', playback);
 
+  socket.on('site:share', p => {
+    const id = socket.data.roomId, r = rooms.get(id);
+    if (!r || !r.members.has(socket.id) || !p || typeof p.url !== 'string') return;
+    try {
+      const u = new URL(p.url.slice(0, 2048));
+      if (!['http:', 'https:'].includes(u.protocol)) return error(socket, 'Faqat http yoki https sayt havolasi mumkin.');
+      r.siteUrl = u.href; r.siteExpanded = false;
+      io.to(id).emit('site:shared', { url: r.siteUrl, expanded: false, by: socket.data.name });
+    } catch (_) { error(socket, 'Sayt havolasi noto‘g‘ri.'); }
+  });
+  socket.on('site:expand', p => {
+    const id = socket.data.roomId, r = rooms.get(id);
+    if (!r || !r.members.has(socket.id) || !r.siteUrl) return;
+    r.siteExpanded = Boolean(p && p.expanded);
+    io.to(id).emit('site:shared', { url: r.siteUrl, expanded: r.siteExpanded, by: socket.data.name });
+  });
+  socket.on('screen:started', () => {
+    const id = socket.data.roomId, r = rooms.get(id);
+    if (!r || !r.members.has(socket.id)) return;
+    if (r.screenOwner && r.screenOwner !== socket.id) return socket.emit('screen:error', 'Boshqa ishtirokchi hozir ekran ulashyapti.');
+    r.screenOwner = socket.id;
+    io.to(id).emit('screen:started', { from: socket.id, name: socket.data.name });
+  });
   socket.on('rtc:offer', p => {
     const id = socket.data.roomId, r = rooms.get(id), to = p && p.to;
     if (!r || !r.members.has(socket.id) || !r.members.has(to) || !p.offer) return;
@@ -167,7 +191,10 @@ io.on('connection', socket => {
   });
   socket.on('screen:stop', () => {
     const id = socket.data.roomId, r = rooms.get(id);
-    if (r && r.members.has(socket.id)) socket.to(id).emit('screen:stop', { from: socket.id });
+    if (r && r.members.has(socket.id) && r.screenOwner === socket.id) {
+      r.screenOwner = null;
+      socket.to(id).emit('screen:stop', { from: socket.id });
+    }
   });
 
   socket.on('disconnect', () => leave(socket));
