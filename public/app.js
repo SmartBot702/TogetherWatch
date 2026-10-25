@@ -3,7 +3,7 @@ const $=id=>document.getElementById(id);
 const socket=io();
 let rtcIceServers=[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun.cloudflare.com:3478'}];
 fetch('/api/rtc-config',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(c=>{if(c&&Array.isArray(c.iceServers)&&c.iceServers.length)rtcIceServers=c.iceServers}).catch(()=>{});
-let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null,callStream=null,siteUrl=null,siteExpanded=false,screenOwner=null,hlsInstance=null,queueItems=[],volume=1,muted=false,seekDuration=0,seeking=false;const peers=new Map(),callPeers=new Map(),callReady=new Set(),pendingScreenIce=new Map(),pendingCallIce=new Map();
+let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null,callStream=null,siteUrl=null,siteExpanded=false,screenOwner=null,hlsInstance=null,queueItems=[],volume=1,muted=false,seekDuration=0,seeking=false,localFile=null,localFileId=null,localObjectUrl=null,latestPlaybackState=null;const peers=new Map(),callPeers=new Map(),callReady=new Set(),pendingScreenIce=new Map(),pendingCallIce=new Map();
 
 socket.on('connect',()=>{
   $('connection').textContent='● Serverga ulandi';
@@ -448,7 +448,7 @@ function normalizeState(s){
 function destroyPlayer(){
   if(hlsInstance){try{hlsInstance.destroy()}catch(e){}hlsInstance=null}
   if(player){
-    try{if(media&&media.mediaType==='youtube'&&player.destroy)player.destroy();else if(media&&media.mediaType==='vimeo'&&player.destroy)player.destroy();else if(media&&media.mediaType==='file'){player.pause();player.removeAttribute('src');player.load()}}catch(e){}
+    try{if(media&&media.mediaType==='youtube'&&player.destroy)player.destroy();else if(media&&media.mediaType==='vimeo'&&player.destroy)player.destroy();else if(media&&(media.mediaType==='file'||media.mediaType==='local')){player.pause();player.removeAttribute('src');player.load()}}catch(e){}
   }
   $('player').replaceChildren();player=null;playerReady=false;media=null;
   $('placeholder').classList.remove('hidden');
@@ -485,14 +485,15 @@ function loadMedia(next,state){
       player.on('pause',()=>{if(!remote&&Date.now()>=remoteUntil)getTimeAsync().then(t=>emitPlayback(false,t))});
        player.on('ended',()=>{if(isHost)socket.emit('queue:next')});
     };init();
-  }else if(next.mediaType==='file'||next.mediaType==='hls'){
+  }else if(next.mediaType==='local'||next.mediaType==='file'||next.mediaType==='hls'){
+    if(next.mediaType==='local'&&(!localObjectUrl||localFileId!==next.mediaId)){$('placeholder').classList.remove('hidden');$('playState').textContent='Mahalliy fayl kerak';$('videoError').textContent='Bu xonadagi videoni ko‘rish uchun “Mahalliy video” tugmasini bosib, aynan bir xil faylni tanlang.';$('localVideoHint').textContent='Kerakli fayl: '+next.mediaId+' — fayl nomi, hajmi va sanasi mos bo‘lishi kerak.';return}
     const video=document.createElement('video');video.id='filePlayer';video.playsInline=true;video.preload='auto';video.controls=false;video.style.width='100%';video.style.height='100%';video.style.position='absolute';video.style.inset='0';if(next.mediaType==='hls')video.crossOrigin='anonymous';$('player').append(video);player=video;
     const ready=()=>markReady(state);
     if(next.mediaType==='hls'&&window.Hls&&Hls.isSupported()){
       hlsInstance=new Hls({enableWorker:true,lowLatencyMode:false,backBufferLength:30});hlsInstance.loadSource(next.mediaUrl);hlsInstance.attachMedia(video);
       hlsInstance.on(Hls.Events.MANIFEST_PARSED,ready);
       hlsInstance.on(Hls.Events.ERROR,(_event,data)=>{if(data&&data.fatal)$('videoError').textContent='HLS oqimini ochib bo‘lmadi. Sayt CORS yoki maxsus token talab qilishi mumkin.'});
-    }else{video.src=next.mediaUrl;video.addEventListener('loadedmetadata',ready,{once:true})}
+    }else{video.src=next.mediaType==='local'?localObjectUrl:next.mediaUrl;video.addEventListener('loadedmetadata',ready,{once:true})}
     video.addEventListener('error',()=>{$('videoError').textContent='Videoni ochib bo‘lmadi. Havola ochiq bo‘lishi va sayt CORS orqali ijroga ruxsat berishi kerak.'});
     video.addEventListener('play',()=>{if(!remote&&Date.now()>=remoteUntil)emitPlayback(true,video.currentTime)});
     video.addEventListener('pause',()=>{if(!remote&&Date.now()>=remoteUntil&&!video.ended)emitPlayback(false,video.currentTime)});
@@ -502,7 +503,7 @@ function loadMedia(next,state){
 }
 function getTime(){
   if(!player||!playerReady)return 0;
-  try{if(media.mediaType==='youtube')return player.getCurrentTime()||0;if(media.mediaType==='file'||media.mediaType==='hls')return player.currentTime||0}catch(e){}
+  try{if(media.mediaType==='youtube')return player.getCurrentTime()||0;if(media.mediaType==='file'||media.mediaType==='hls'||media.mediaType==='local')return player.currentTime||0}catch(e){}
   return 0;
 }
 async function getTimeAsync(){
@@ -514,7 +515,7 @@ async function getDurationAsync(){
   try{
     if(media.mediaType==='youtube')return Number(player.getDuration())||0;
     if(media.mediaType==='vimeo')return Number(await player.getDuration())||0;
-    if(media.mediaType==='file'||media.mediaType==='hls')return Number.isFinite(player.duration)?player.duration:0;
+    if(media.mediaType==='file'||media.mediaType==='hls'||media.mediaType==='local')return Number.isFinite(player.duration)?player.duration:0;
   }catch(e){}
   return 0;
 }
@@ -534,7 +535,7 @@ async function updatePlayerTimeline(){
 }
 async function isPlaying(){
   if(!player||!playerReady)return false;
-  try{if(media.mediaType==='youtube')return player.getPlayerState()===YT.PlayerState.PLAYING;if(media.mediaType==='file'||media.mediaType==='hls')return !player.paused;if(media.mediaType==='vimeo')return (await player.getPaused())===false}catch(e){}
+  try{if(media.mediaType==='youtube')return player.getPlayerState()===YT.PlayerState.PLAYING;if(media.mediaType==='file'||media.mediaType==='hls'||media.mediaType==='local')return !player.paused;if(media.mediaType==='vimeo')return (await player.getPaused())===false}catch(e){}
   return false;
 }
 async function applyVolume(){
@@ -584,7 +585,7 @@ function emitPlayback(playing,time){
 async function seekTo(t){
   if(!player||!playerReady)return;
   const v=Math.max(0,Number(t)||0);
-  try{if(media.mediaType==='youtube')player.seekTo(v,true);else if(media.mediaType==='file'||media.mediaType==='hls')player.currentTime=v;else if(media.mediaType==='vimeo')await player.setCurrentTime(v)}catch(e){}
+  try{if(media.mediaType==='youtube')player.seekTo(v,true);else if(media.mediaType==='file'||media.mediaType==='hls'||media.mediaType==='local')player.currentTime=v;else if(media.mediaType==='vimeo')await player.setCurrentTime(v)}catch(e){}
 }
 async function play(){if(!player||!playerReady)return false;try{if(media.mediaType==='youtube'){player.playVideo();return true}await player.play();return true}catch(e){$('videoError').textContent='Avtomatik ijro bloklandi. Videoni o‘zingiz Play tugmasi bilan boshlang; keyin holat xona bilan sinxronlanadi.';return false}}
 async function pause(){if(!player||!playerReady)return;try{if(media.mediaType==='youtube')player.pauseVideo();else await player.pause()}catch(e){}}
@@ -643,8 +644,11 @@ $('loadVideo').onclick=async()=>{
   }catch(e){socket.emit('site:share',{url:u.href});$('videoError').textContent='Sayt havolasi ulashildi, ammo video oqimini avtomatik aniqlab bo‘lmadi. “Brauzerda ochish”ni bosing yoki sahifadagi ochiq MP4/WebM/HLS video havolasini kiriting.';}
   finally{$('loadVideo').disabled=false}
 };
-socket.on('video:loaded',s=>{const next=normalizeState(s);if(next)loadMedia(next,s)});
-socket.on('video:state',s=>{const next=normalizeState(s);if(next&&(!media||next.mediaType!==media.mediaType||next.mediaId!==media.mediaId))loadMedia(next,s);else applyState(s)});
+function localVideoFingerprint(file){let value=file.name+'|'+file.size+'|'+file.lastModified;let hash=2166136261;for(let i=0;i<value.length;i++){hash^=value.charCodeAt(i);hash=Math.imul(hash,16777619)}return 'local-'+(hash>>>0).toString(16).padStart(8,'0')}
+$('chooseLocalVideo').onclick=()=>{if(!roomId){$('videoError').textContent='Avval xonaga kiring yoki yangi xona yarating.';return}$('localVideoFile').click()};
+$('localVideoFile').onchange=()=>{const file=$('localVideoFile').files&&$('localVideoFile').files[0];if(!file)return;const id=localVideoFingerprint(file);const current=media;if(current&&current.mediaType==='local'&&id!==current.mediaId&&!isHost){$('videoError').textContent='Bu boshqa fayl. Xonadagi video bilan bir xil faylni tanlang.';$('localVideoFile').value='';return}if(player&&current&&current.mediaType==='local')destroyPlayer();if(localObjectUrl)URL.revokeObjectURL(localObjectUrl);localFile=file;localFileId=id;localObjectUrl=URL.createObjectURL(file);$('localVideoHint').textContent='Tanlandi: '+file.name+' ('+Math.round(file.size/1048576)+' MB)';$('videoError').textContent='';if(current&&current.mediaType==='local'&&id===current.mediaId){loadMedia(current,latestPlaybackState||{mediaType:'local',mediaId:id,isPlaying:false,currentTime:0,updatedAt:Date.now()});return}socket.emit('video:load',{mediaType:'local',mediaId:id,mediaUrl:'local://'+id,videoId:null});$('videoError').textContent='Mahalliy video xona bilan ulashildi. Boshqa ishtirokchilar ham aynan shu faylni tanlashi kerak.'};
+socket.on('video:loaded',s=>{latestPlaybackState=s;const next=normalizeState(s);if(next)loadMedia(next,s)});
+socket.on('video:state',s=>{latestPlaybackState=s;const next=normalizeState(s);if(next&&(!media||next.mediaType!==media.mediaType||next.mediaId!==media.mediaId))loadMedia(next,s);else applyState(s)});
 $('playPause').onclick=async()=>{
   if(!playerReady)return;
   const playing=await isPlaying(),t=await getTimeAsync();
