@@ -187,6 +187,18 @@ test('two clients share a room, activity selection, and chat in realtime', async
     assert.equal(playback.isPlaying, true);
     assert.equal(playback.currentTime, 12);
 
+    // A burst of chat messages is capped per participant to prevent room spam.
+    let burstMessages = 0;
+    const countBurst = message => { if (message.text.startsWith('burst-check-')) burstMessages++; };
+    guest.on('chat:message', countBurst);
+    const rateErrorPromise = waitForEvent(observer, 'room:error');
+    for (let i = 0; i < 9; i++) observer.emit('chat:send', { text: 'burst-check-' + i });
+    const rateError = await rateErrorPromise;
+    assert.match(rateError, /tez-tez xabar/);
+    await new Promise(resolve => setTimeout(resolve, 150));
+    guest.off('chat:message', countBurst);
+    assert.equal(burstMessages, 8, 'only eight chat messages should pass in a five-second window');
+
     const promotedPromise = waitForEvent(guest, 'room:role');
     host.disconnect();
     const promoted = await promotedPromise;
