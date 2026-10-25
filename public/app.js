@@ -92,6 +92,8 @@ $('chatText').addEventListener('input',()=>{
 socket.on('chat:message',m=>{renderChatMessage(m);scroll()});
 $('chatForm').onsubmit=e=>{e.preventDefault();const text=$('chatText').value.trim();if(text&&roomId){socket.emit('chat:send',{text});socket.emit('chat:typing',{typing:false});$('chatText').value='';clearTimeout(typingStopTimer)}};
 let renderedSiteUrl=null;
+$('openSite').textContent='Brauzerda ochish';
+$('siteStatus').textContent='Havolani ulashganda avval video oqimini aniqlashga urinadi. Oddiy sahifa bo‘lsa, xona ichida ochiladi; bloklangan sahifani har bir ishtirokchi o‘z brauzerida ochishi mumkin.';
 function renderSharedSite(url,expanded){
   siteUrl=url||null;siteExpanded=Boolean(expanded);
   const wrap=$('sharedSiteWrap');
@@ -100,11 +102,32 @@ function renderSharedSite(url,expanded){
   if(renderedSiteUrl!==siteUrl){$('sharedSiteFrame').src=siteUrl;$('siteUrlInput').value=siteUrl;renderedSiteUrl=siteUrl}
   wrap.classList.toggle('site-expanded',siteExpanded);
   $('siteExpand').textContent=siteExpanded?'Kichraytirish (hamma uchun)':'Hamma uchun kattalashtirish';
-  $('siteStatus').textContent='Havola xona bilan ulashildi: '+siteUrl+'. Agar ichki oynada “taqiqlangan / refused to connect” chiqsa, bu saytning iframe xavfsizlik cheklovi. “Yangi oynada ochish”ni bosing, keyin “Ekran ulashish” orqali brauzer oynasini hamma bilan ko‘rsating.';
+  $('openSite').textContent='Brauzerda ochish';
+  $('siteStatus').textContent='Umumiy sahifa: '+siteUrl+'. Agar sayt ichki oynada ochilmasa, “Brauzerda ochish”ni bosing. Har bir ishtirokchi sahifani o‘z brauzerida ochadi; video uchun saytning ochiq MP4/WebM/HLS havolasini ulashsangiz, ijro ham sinxronlanadi.';
 }
-$('shareSite').onclick=()=>{
-  try{const u=new URL($('siteUrlInput').value.trim());if(!['http:','https:'].includes(u.protocol))throw new Error('protocol');socket.emit('site:share',{url:u.href})}
-  catch(e){$('siteStatus').textContent='To‘liq http:// yoki https:// havolasini kiriting.'}
+$('shareSite').onclick=async()=>{
+  let u;
+  try{u=new URL($('siteUrlInput').value.trim());if(!['http:','https:'].includes(u.protocol)||u.username||u.password)throw new Error('protocol')}
+  catch(e){$('siteStatus').textContent='To‘liq ochiq https:// yoki http:// havolasini kiriting.';return}
+  const direct=parseMedia(u.href);
+  if(direct){socket.emit('video:load',direct);$('siteStatus').textContent='Video barcha ishtirokchilar uchun sinxron ulandi.';return}
+  $('shareSite').disabled=true;
+  $('siteStatus').textContent='Sahifa tekshirilmoqda: video oqimi topilsa, hamma uchun sinxron ijro qilinadi…';
+  try{
+    const response=await fetch('/api/extract?url='+encodeURIComponent(u.href),{cache:'no-store'});
+    const result=await response.json();
+    if(result.ok&&result.mediaUrl){
+      const found={mediaType:result.mediaType,mediaId:result.mediaUrl,mediaUrl:result.mediaUrl,videoId:null};
+      socket.emit('video:load',found);
+      $('siteStatus').textContent='Sahifadan video oqimi topildi va sinxron ijro uchun ulandi.';
+      return;
+    }
+    socket.emit('site:share',{url:u.href});
+    $('siteStatus').textContent='Sahifa xona bilan ulashildi. Ichki oynada bloklansa, “Brauzerda ochish” orqali har bir ishtirokchi o‘z brauzerida ochishi mumkin. Saytning ichki navigatsiyasi va DRM bilan himoyalangan videosi tashqi sayt ruxsatisiz masofadan boshqarilmaydi.';
+  }catch(e){
+    socket.emit('site:share',{url:u.href});
+    $('siteStatus').textContent='Sahifa havolasi ulashildi. Ichki oynada ochilmasa, “Brauzerda ochish”ni bosing. Video sinxronligi uchun to‘g‘ridan-to‘g‘ri video havolasi kerak bo‘lishi mumkin.';
+  }finally{$('shareSite').disabled=false}
 };
 $('siteExpand').onclick=()=>{if(siteUrl)socket.emit('site:expand',{expanded:!siteExpanded})};
 $('siteFullscreen').onclick=()=>{const el=$('sharedSiteFrameWrap');if(el.requestFullscreen)el.requestFullscreen().catch(()=>{$('siteStatus').textContent='To‘liq ekran rejimi brauzer tomonidan ruxsat etilmadi.'})};
@@ -344,8 +367,8 @@ $('loadVideo').onclick=async()=>{
   try{
     const response=await fetch('/api/extract?url='+encodeURIComponent(u.href)),result=await response.json();
     if(result.ok&&result.mediaUrl){const found={mediaType:result.mediaType,mediaId:result.mediaUrl,mediaUrl:result.mediaUrl,videoId:null};$('videoError').textContent='Video havolasi topildi. Hamma uchun ulanyapti…';socket.emit('video:load',found);return}
-    socket.emit('site:share',{url:u.href});$('videoError').textContent=(result.error?'Sayt server orqali tekshirishga ruxsat bermadi: '+result.error+' ':'Ochiq video oqimi topilmadi. ')+'Havola xona bilan ulashildi. Agar “taqiqlangan / refused to connect” chiqsa, “Yangi oynada ochish”ni bosing va ekran ulashing.';$('playState').textContent='Tashqi sayt';
-  }catch(e){socket.emit('site:share',{url:u.href});$('videoError').textContent='Sayt havolasi ulashildi, ammo video oqimini olish imkoni bo‘lmadi. “Yangi oynada ochish”ni bosing va brauzer oynasini ekran ulashish orqali ko‘rsating.'}
+    socket.emit('site:share',{url:u.href});$('videoError').textContent=(result.error?'Sayt server orqali tekshirishga ruxsat bermadi: '+result.error+' ':'Ochiq video oqimi topilmadi. ')+'Havola xona bilan ulashildi. Ichki oyna bloklansa, “Brauzerda ochish”ni bosing. Boshqa saytning ichki navigatsiyasi va himoyalangan videosi har doim ham sinxron boshqarilmaydi.';$('playState').textContent='Tashqi sayt';
+  }catch(e){socket.emit('site:share',{url:u.href});$('videoError').textContent='Sayt havolasi ulashildi, ammo video oqimini avtomatik aniqlab bo‘lmadi. “Brauzerda ochish”ni bosing yoki sahifadagi ochiq MP4/WebM/HLS video havolasini kiriting.';}
   finally{$('loadVideo').disabled=false}
 };
 socket.on('video:loaded',s=>{const next=normalizeState(s);if(next)loadMedia(next,s)});
