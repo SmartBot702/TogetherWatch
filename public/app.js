@@ -56,6 +56,7 @@ socket.on('room:joined',d=>{
   for(const timer of typingTimers.values())clearTimeout(timer);typingTimers.clear();typingUsers.clear();renderTyping();
   history.replaceState({},'',location.pathname+'?room='+roomId);
   renderQueue(d.queue||[]);
+  (d.videos||[]).forEach(renderSharedVideo);
   (d.chatHistory||[]).forEach(renderChatMessage);
   if(d.state&&(d.state.mediaType||d.state.videoId))loadMedia(normalizeState(d.state),d.state);
   renderGame(d.game);renderConnectFour(d.connectFour);
@@ -241,7 +242,7 @@ $('leaveRoom').onclick=()=>{
   for(const id of Array.from(peers.keys()))removePeer(id);
   for(const id of Array.from(callPeers.keys()))removeCallPeer(id);
   socket.emit('room:leave');destroyPlayer();roomId=null;history.replaceState({},'',location.pathname);
-  renderGame({board:Array(9).fill(null),turn:'X',winner:null,moves:0});setRoomTab('video');boardStrokes=[];resizeWhiteboard();sharedFileIds.clear();sharedLinkIds.clear();$('sharedLinksList').replaceChildren();$('sharedFilesList').replaceChildren();for(const [id,msg] of [['sharedLinksList','Hozircha havola yo‘q.'],['sharedFilesList','Hozircha fayl yo‘q.']]){const empty=document.createElement('div');empty.className='muted small';empty.textContent=msg;$(id).append(empty)}$('fileShareStatus').textContent='Bir fayl 450 KB gacha. Fayllar joriy xonada vaqtincha saqlanadi.';$('roomFileInput').value='';setSection(activeSection);refreshPublicRooms();document.body.dataset.roomTheme='violet';
+  renderGame({board:Array(9).fill(null),turn:'X',winner:null,moves:0});setRoomTab('video');boardStrokes=[];resizeWhiteboard();sharedFileIds.clear();sharedVideoIds.clear();sharedLinkIds.clear();$('sharedVideosList').replaceChildren();$('sharedLinksList').replaceChildren();$('sharedFilesList').replaceChildren();for(const [id,msg] of [['sharedLinksList','Hozircha havola yo‘q.'],['sharedFilesList','Hozircha fayl yo‘q.'],['sharedVideosList','Hozircha kino yuklanmagan.']]){const empty=document.createElement('div');empty.className='muted small';empty.textContent=msg;$(id).append(empty)}$('fileShareStatus').textContent='Hujjatlar 450 KB gacha; kino fayllari 4 GB gacha yuklanadi va server diskida saqlanadi.';$('roomFileInput').value='';setSection(activeSection);refreshPublicRooms();document.body.dataset.roomTheme='violet';
 };
 
 let gameState={board:Array(9).fill(null),turn:'X',winner:null,moves:0};
@@ -384,6 +385,60 @@ $('shareRoomLink').addEventListener('click',()=>{
   const raw=$('roomLinkUrl').value.trim();if(!raw){$('fileShareStatus').textContent='Havola kiriting.';return}
   try{const url=new URL(raw);if(!['http:','https:'].includes(url.protocol)||url.username||url.password)throw new Error('url');socket.emit('link:add',{url:url.href,title:$('roomLinkTitle').value.trim()});$('roomLinkUrl').value='';$('roomLinkTitle').value='';$('fileShareStatus').textContent='Havola yuborilmoqda…'}
   catch(_){$('fileShareStatus').textContent='Faqat to‘liq http:// yoki https:// havolasi qabul qilinadi.'}
+});
+
+
+const sharedVideoIds=new Set();
+function renderSharedVideo(file){
+  if(!file||!file.id||sharedVideoIds.has(file.id))return;
+  sharedVideoIds.add(file.id);
+  const list=$('sharedVideosList');if(!list)return;
+  const empty=list.querySelector('.muted.small');if(empty)empty.remove();
+  const item=document.createElement('div');item.className='file-share-item';
+  const info=document.createElement('div');const title=document.createElement('div');title.className='file-share-name';title.textContent=file.name;
+  const meta=document.createElement('div');meta.className='file-share-meta';meta.textContent=(file.by||'Ishtirokchi')+' · '+formatBytes(file.size||0)+' · '+new Date(file.at||Date.now()).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  info.append(title,meta);
+  const watch=document.createElement('button');watch.className='btn primary';watch.type='button';watch.textContent='Birga tomosha qilish';
+  watch.addEventListener('click',()=>{if(roomId)socket.emit('video:load',{mediaType:'uploaded',mediaId:file.id,ext:file.ext})});
+  item.append(info,watch);list.append(item);
+}
+socket.on('video:uploaded',file=>{renderSharedVideo(file);$('fileShareStatus').textContent='Kino yuklandi. “Birga tomosha qilish”ni bosing.'});
+$('shareMovieFile').addEventListener('click',async()=>{
+  if(!roomId){$('fileShareStatus').textContent='Avval tomosha xonasiga kiring.';return}
+  const input=$('movieFileInput'),file=input.files&&input.files[0];
+  if(!file){$('fileShareStatus').textContent='Avval kino faylini tanlang.';return}
+  const allowed=new Set(['mp4','webm','m4v','ogv']);
+  const ext=file.name.includes('.')?file.name.split('.').pop().toLowerCase():'';
+  if(!allowed.has(ext)){$('fileShareStatus').textContent='Brauzerda ijro qilish uchun MP4, WebM, M4V yoki OGV faylini tanlang. MKV bevosita qo‘llanmaydi.';return}
+  const maxBytes=Number($('movieFileInput').dataset.maxBytes)||4*1024*1024*1024;
+  if(file.size<=0||file.size>maxBytes){$('fileShareStatus').textContent='Kino hajmi 0 dan 4 GB gacha bo‘lishi kerak.';return}
+  const button=$('shareMovieFile'),progress=$('movieUploadProgress');
+  button.disabled=true;progress.hidden=false;progress.max=file.size;progress.value=0;
+  $('fileShareStatus').textContent='Kino serverga tayyorlanmoqda…';
+  let uploadId=null;
+  const request=(event,payload)=>new Promise(resolve=>socket.emit(event,payload,resolve));
+  try{
+    const started=await request('video:upload:start',{name:file.name,size:file.size,mime:file.type});
+    if(!started||!started.ok)throw new Error(started&&started.error||'Kino yuklashni boshlab bo‘lmadi.');
+    uploadId=started.uploadId;
+    const chunkSize=Number(started.chunkSize)||256*1024;
+    let index=0;
+    for(let offset=0;offset<file.size;offset+=chunkSize){
+      const buffer=await file.slice(offset,Math.min(file.size,offset+chunkSize)).arrayBuffer();
+      const result=await request('video:upload:chunk',{uploadId,index,data:buffer});
+      if(!result||!result.ok)throw new Error(result&&result.error||'Kino bo‘lagi yuborilmadi.');
+      index++;progress.value=result.received||Math.min(file.size,offset+buffer.byteLength);
+      $('fileShareStatus').textContent='Kino yuklanmoqda: '+Math.floor(progress.value/file.size*100)+'% ('+formatBytes(progress.value)+' / '+formatBytes(file.size)+')';
+    }
+    const finished=await request('video:upload:end',{uploadId});
+    if(!finished||!finished.ok)throw new Error(finished&&finished.error||'Kino yuklash yakunlanmadi.');
+    renderSharedVideo(finished.file);
+    $('fileShareStatus').textContent='Kino yuklandi. Endi “Birga tomosha qilish”ni bosing.';
+    input.value='';
+  }catch(error){
+    if(uploadId)socket.emit('video:upload:cancel',{uploadId});
+    $('fileShareStatus').textContent=error&&error.message?error.message:'Kino yuklashda xato yuz berdi.';
+  }finally{button.disabled=false;progress.hidden=true;progress.value=0}
 });
 
 const sharedFileIds=new Set();
