@@ -34,6 +34,7 @@ socket.on('room:joined',d=>{
   $('entry').classList.add('hidden');$('how').classList.add('hidden');$('workspace').classList.remove('hidden');
   $('roomCode').textContent=roomId;$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
   $('loadVideo').disabled=false;$('youtubeUrl').disabled=false;$('mediaType').disabled=false;$('screenShare').disabled=!!screenOwner&&screenOwner!==socket.id;$('chat').replaceChildren();
+  for(const timer of typingTimers.values())clearTimeout(timer);typingTimers.clear();typingUsers.clear();renderTyping();
   history.replaceState({},'',location.pathname+'?room='+roomId);
   renderQueue(d.queue||[]);
   (d.chatHistory||[]).forEach(renderChatMessage);
