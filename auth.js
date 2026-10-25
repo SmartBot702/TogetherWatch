@@ -103,6 +103,7 @@ async function saveRoomSnapshot(room) {
     title: typeof room.title === 'string' ? room.title.slice(0, 60) : 'Tomosha xonasi',
     theme: ['violet','ocean','sunset','emerald'].includes(room.theme) ? room.theme : 'violet',
     isPublic: Boolean(room.isPublic),
+    activeActivity: ['video','site','games','board','files','screen','call','people'].includes(room.activeActivity) ? room.activeActivity : 'video',
     links: Array.isArray(room.links) ? room.links.slice(0, 30) : [],
     boardStrokes: Array.isArray(room.boardStrokes) ? room.boardStrokes.slice(-2000) : [],
     game: room.game || { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 },
