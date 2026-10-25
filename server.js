@@ -37,6 +37,10 @@ function discardRoom(id) {
   rooms.delete(id);
   if (typeof auth.deleteRoomSnapshot === 'function') auth.deleteRoomSnapshot(id).catch(err => console.error('Room cleanup failed:', err.message));
 }
+const roomPersistenceHeartbeat = setInterval(() => {
+  for (const room of rooms.values()) if (room.members.size) persistRoom(room);
+}, 60 * 1000);
+if (roomPersistenceHeartbeat.unref) roomPersistenceHeartbeat.unref();
 
 app.disable('x-powered-by');
 app.use(express.json({ limit: '20kb' }));
