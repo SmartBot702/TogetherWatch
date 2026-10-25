@@ -61,3 +61,12 @@ render.yaml Node.js xizmatining asosiy qismini joylashtiradi, lekin Docker Compo
 - Ovoz/video va ekran ulashish uchun HTTPS hamda brauzer ruxsatlari kerak. Ayrim tarmoqlarda TURN_URLS, TURN_USERNAME, TURN_CREDENTIAL sozlash talab etiladi.
 - .env faylini GitHub’ga yuklamang. Docker volume’lar ma’lumotni saqlaydi; muntazam PostgreSQL backup ham sozlang.
 - Kontentni qayta tarqatmang; video platformalarining mualliflik huquqi va foydalanish shartlariga rioya qiling.
+
+
+## Telefon orqali foydalanish
+
+- Xonaga telefon brauzeridan kiring. “Sayt” bo‘limidagi umumiy brauzerda manzil maydoniga URL yozib, “Umumiy brauzerni ochish”ni bosing.
+- Sahifani bosish va surish sensorli boshqaruvni ishlatadi. “Sayt ichiga yozish” maydoni mobil klaviatura orqali matn yuboradi.
+- Agar umumiy brauzer “xizmat sozlanmagan” desa, ilova serveriga BROWSER_WS_ENDPOINT maxfiy sozlamasi va ishlayotgan xususiy Chromium/Browserless xizmati kerak.
+- Android/iOS brauzerlari qurilmaning butun ekranini har doim ham veb-saytga uzatishga ruxsat bermaydi. Bu holatni oddiy JavaScript bilan chetlab o‘tib bo‘lmaydi; native mobil ilova va tizim ekran capture ruxsati talab qilinishi mumkin.
+- Telefon orqali video ko‘rsatish uchun “Video” bo‘limida YouTube/Vimeo yoki to‘g‘ridan-to‘g‘ri video URL’ni ulashish mumkin. DRM himoyasi va sayt qoidalari cheklov bo‘lishi mumkin.
