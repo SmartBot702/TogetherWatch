@@ -193,6 +193,11 @@ function normalizeMedia(p) {
     try { const source = new URL(p.mediaUrl); const hash = source.searchParams.get('h') || ''; if (source.hostname === 'player.vimeo.com' && source.pathname === '/video/' + id && /^[A-Za-z0-9]{1,64}$/.test(hash)) mediaUrl += '?h=' + encodeURIComponent(hash); } catch (_) {}
     return { mediaType: 'vimeo', mediaId: id, mediaUrl, videoId: null };
   }
+  if (type === 'local') {
+    const id = String(p.mediaId || '');
+    if (!/^local-[a-f0-9]{8}$/.test(id)) return null;
+    return { mediaType: 'local', mediaId: id, mediaUrl: 'local://' + id, videoId: null };
+  }
   if (type === 'file' || type === 'hls') {
     const raw = typeof p.mediaUrl === 'string' ? p.mediaUrl.slice(0, 2048) : '';
     try {
