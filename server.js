@@ -217,6 +217,11 @@ function normalizeMedia(p) {
     if (!/^\d{1,24}$/.test(id)) return null;
     return { mediaType: 'ok', mediaId: id, mediaUrl: 'https://ok.ru/videoembed/' + id, videoId: null };
   }
+  if (type === 'rutube') {
+    const id = String(p.mediaId || '');
+    if (!/^[A-Za-z0-9_-]{6,64}$/.test(id)) return null;
+    return { mediaType: 'rutube', mediaId: id, mediaUrl: 'https://rutube.ru/play/embed/' + id, videoId: null };
+  }
   if (type === 'local') {
     const id = String(p.mediaId || '');
     if (!/^local-[a-f0-9]{16}$/.test(id)) return null;
