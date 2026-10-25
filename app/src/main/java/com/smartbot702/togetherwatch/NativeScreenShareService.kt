@@ -4,6 +4,8 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.Manifest
+import android.content.pm.PackageManager
 import android.content.Intent
 import android.media.projection.MediaProjection
 import android.os.Build
@@ -12,6 +14,8 @@ import android.content.pm.ServiceInfo
 import io.socket.client.IO
 import io.socket.client.Socket
 import org.json.JSONObject
+import org.webrtc.AudioSource
+import org.webrtc.AudioTrack
 import org.webrtc.DefaultVideoDecoderFactory
 import org.webrtc.DefaultVideoEncoderFactory
 import org.webrtc.EglBase
@@ -37,6 +41,8 @@ class NativeScreenShareService : Service() {
     private var factory: PeerConnectionFactory? = null
     private var source: VideoSource? = null
     private var track: VideoTrack? = null
+    private var audioSource: AudioSource? = null
+    private var audioTrack: AudioTrack? = null
     private var textureHelper: SurfaceTextureHelper? = null
     private val peers = ConcurrentHashMap<String, PeerConnection>()
     private val pendingIce = ConcurrentHashMap<String, MutableList<IceCandidate>>()
@@ -93,6 +99,11 @@ class NativeScreenShareService : Service() {
             .createPeerConnectionFactory()
         source = factory!!.createVideoSource(true)
         textureHelper = SurfaceTextureHelper.create("TW-ScreenCapture", egl!!.eglBaseContext)
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            audioSource = factory!!.createAudioSource(MediaConstraints())
+            audioTrack = factory!!.createAudioTrack("togetherwatch-screen-audio", audioSource)
+            audioTrack?.setEnabled(true)
+        }
     }
 
     private fun startCapture(permissionData: Intent) {
@@ -219,6 +230,7 @@ class NativeScreenShareService : Service() {
         val pc = makePeer(peerId) ?: return
         val video = track ?: return
         pc.addTrack(video, listOf("togetherwatch-screen"))
+        audioTrack?.let { pc.addTrack(it, listOf("togetherwatch-screen")) }
         pc.createOffer(object : SimpleSdpObserver() {
             override fun onCreateSuccess(desc: SessionDescription?) {
                 if (desc == null) return
@@ -294,6 +306,10 @@ class NativeScreenShareService : Service() {
         capturer = null
         try { track?.dispose() } catch (_: Exception) {}
         track = null
+        try { audioTrack?.dispose() } catch (_: Exception) {}
+        audioTrack = null
+        try { audioSource?.dispose() } catch (_: Exception) {}
+        audioSource = null
         try { source?.dispose() } catch (_: Exception) {}
         source = null
         try { textureHelper?.dispose() } catch (_: Exception) {}
