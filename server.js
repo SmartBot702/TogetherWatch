@@ -427,7 +427,7 @@ async function openSharedBrowser(room, rawUrl) {
           if (session.detectedMedia.size >= 25) return;
           session.detectedMedia.add(raw);
           safePublicUrl(raw).then(() => {
-            if (room.browserSession === session) io.to(room.id).emit('browser:media-candidate', { url: raw, mediaType: hls ? 'hls' : 'file' });
+            if (room.browserSession === session && room.hostId) io.to(room.hostId).emit('browser:media-candidate', { url: raw, mediaType: hls ? 'hls' : 'file' });
           }).catch(() => {});
         } catch (_) {}
       });
