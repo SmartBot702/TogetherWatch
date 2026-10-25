@@ -1,21 +1,37 @@
-## Shared remote browser (self-hosted)
+# Umumiy masofaviy brauzer
 
-The room's **Umumiy brauzer** is a single remote Chromium page shared by every participant. Clicks, typing, scrolling, back/forward, and navigation operate on the same page; everyone receives periodic screenshots. This is different from an iframe and can display sites that refuse embedding, subject to the site's own login, DRM, bot-protection, and terms.
+Xonadagi Umumiy brauzer — bitta masofaviy Chromium sahifasi. Barcha ishtirokchilar bir xil sahifani ko‘radi; bosish, yozish, aylantirish va navigatsiya umumiy sessiyaga ta’sir qiladi. Tasvirlar taxminan sekundiga bir marta yangilanadi, bu yuqori FPS video oqimi emas.
 
-### Run the full stack locally or on a VPS
+## To‘liq stackni ishga tushirish
 
-Requires Docker Compose and enough memory for Chromium (start with 2 GB RAM for light use).
+Talablar: Docker Engine, Docker Compose v2 va (VPS uchun) ochiq 80/443-portli domen.
 
-```sh
-# Generate a private token, then start both services
-echo "BROWSER_TOKEN=$(openssl rand -hex 32)" > .env
-docker compose up --build -d
-```
+    git clone https://github.com/SmartBot702/TogetherWatch.git
+    cd TogetherWatch
+    umask 077
+    printf 'BROWSER_TOKEN=%s\nPOSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" > .env
+    docker compose up --build -d
+    docker compose ps
 
-Open `http://localhost:3000`. In a hosted deployment, use a VPS or container platform that supports Docker Compose/private networking and set `BROWSER_WS_ENDPOINT` to a private Browserless/Playwright-compatible Chromium endpoint. Do not expose the browser service publicly. Replace the example `local-dev-token` before exposing the app to the internet. Keep the browser endpoint and token private.
+Mahalliy: http://localhost:3000. Bu konfiguratsiya PostgreSQL ma’lumotlarini Docker volume’da saqlaydi, Browserless’ni faqat ichki Docker tarmog‘ida ushlab turadi va DB’ni brauzer konteyneridan alohida ichki tarmoqqa joylaydi.
 
-The existing Node-only Render service does not automatically run the browserless container; deploy both services or leave `BROWSER_WS_ENDPOINT` unset (the ordinary video, iframe, and screen-share features continue to work). Browser sessions are temporary and are closed when the last participant leaves the room. Remote page data is not stored in room snapshots.
+### VPS’da HTTPS
 
-### Security notes
+1. Domeningizning DNS A/AAAA yozuvini VPS IP manziliga yo‘naltiring.
+2. .env ichiga DOMAIN=watch.example.com qo‘shing (o‘z domeningizni yozing).
+3. 80 va 443-portlarni ochib ishga tushiring:
 
-Navigation is restricted to public HTTP/HTTPS destinations and requests to private/local IP ranges are blocked as a basic SSRF defense. The remote browser must still run in an isolated container/network with no access to internal services or secrets. Do not use this shared session to enter passwords or private account data: all participants can see the same page and can interact with it.
+    docker compose --profile production up --build -d
+
+Caddy sertifikatni avtomatik oladi. Ilovaning 3000-porti host’da faqat 127.0.0.1 ga bog‘langan; tashqariga HTTPS reverse proxy orqali chiqadi.
+
+## Mavjud hostingga ulash
+
+Agar ilova boshqa joyda ishlasa, xususiy Browserless/Playwright-compatible Chromium endpoint’ni yarating va BROWSER_WS_ENDPOINT ni ilovaning secret/environment sozlamasiga kiriting. Endpoint va tokenni ommaga ochmang. Oddiy Node-only Render xizmati Browserless konteynerini o‘zi ishga tushirmaydi.
+
+## Xavfsizlik
+
+- .env faylini repozitoriyga commit qilmang; BROWSER_TOKEN va POSTGRES_PASSWORD maxfiy.
+- Umumiy brauzerga kirgan har bir ishtirokchi sahifani boshqarishi mumkin. Login, to‘lov va shaxsiy ma’lumotlarni kiritmang.
+- URL va resurslar uchun public HTTP/HTTPS tekshiruvi qo‘llanadi. Bu yagona himoya qatlami emas: browser konteynerini ichki xizmatlar va maxfiy ma’lumotlardan ajratilgan tarmoqda saqlang.
+- CAPTCHA, DRM, sayt loginlari va bot-himoya sabab ayrim sahifalar ishlamasligi mumkin.
