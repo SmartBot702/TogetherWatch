@@ -98,7 +98,9 @@ async function saveRoomSnapshot(room) {
     state: room.state || {}, queue: Array.isArray(room.queue) ? room.queue.slice(0, 50) : [],
     messages: Array.isArray(room.messages) ? room.messages.slice(-100) : [],
     siteUrl: typeof room.siteUrl === 'string' ? room.siteUrl : null,
-    siteExpanded: Boolean(room.siteExpanded)
+    siteExpanded: Boolean(room.siteExpanded),
+    title: typeof room.title === 'string' ? room.title.slice(0, 60) : 'Tomosha xonasi',
+    theme: ['violet','ocean','sunset','emerald'].includes(room.theme) ? room.theme : 'violet'
   };
   await pool.query('INSERT INTO togetherwatch_rooms (room_id, payload, empty_at, updated_at) VALUES ($1, $2::jsonb, $3, now()) ON CONFLICT (room_id) DO UPDATE SET payload = EXCLUDED.payload, empty_at = EXCLUDED.empty_at, updated_at = now()', [room.id, JSON.stringify(payload), room.emptyAt || null]);
 }
