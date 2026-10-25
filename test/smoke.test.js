@@ -34,6 +34,16 @@ test('watch-party core controls and client handlers exist', () => {
   }
 });
 
+test('all supported video players advance the queue at most once per ended media item', () => {
+  const app = read('public/app.js');
+  assert.match(app, /function advanceQueueOnEnded\(\)/);
+  assert.match(app, /if\(!isHost\|\|!roomId\|\|!media\)return/);
+  assert.match(app, /if\(endedQueueAdvanceKey===key\)return/);
+  assert.match(app, /onStateChange:e=>\{if\(remote\|\|Date\.now\(\)<remoteUntil\)return;if\(e\.data===YT\.PlayerState\.ENDED\)\{advanceQueueOnEnded\(\);return\}/);
+  assert.match(app, /player\.on\('ended',advanceQueueOnEnded\)/);
+  assert.match(app, /video\.addEventListener\('ended',advanceQueueOnEnded\)/);
+});
+
 test('WebRTC client bounds pending ICE candidates before remote description', () => {
   const app = read('public/app.js');
   assert.match(app, /if\(q\.length>=128\)q\.shift\(\)/);
