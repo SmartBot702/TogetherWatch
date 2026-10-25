@@ -145,6 +145,28 @@ $('siteExpand').onclick=()=>{if(siteUrl)socket.emit('site:expand',{expanded:!sit
 $('siteFullscreen').onclick=()=>{const el=$('sharedSiteFrameWrap');if(el.requestFullscreen)el.requestFullscreen().catch(()=>{$('siteStatus').textContent='To‘liq ekran rejimi brauzer tomonidan ruxsat etilmadi.'})};
 $('openSite').onclick=()=>{if(siteUrl)window.open(siteUrl,'_blank','noopener,noreferrer')};
 socket.on('site:shared',d=>{if(d&&d.url)renderSharedSite(d.url,d.expanded)});
+
+const sharedBrowserStage=$('sharedBrowserStage'), sharedBrowserImage=$('sharedBrowserImage');
+let browserFrameWidth=1280,browserFrameHeight=800,lastBrowserMove=0;
+function startSharedBrowser(){const url=$('sharedBrowserUrl').value.trim();if(!url){$('sharedBrowserStatus').textContent='Sayt manzilini kiriting.';return}$('sharedBrowserStatus').textContent='Umumiy brauzer ishga tushmoqda…';socket.emit('browser:start',{url})}
+$('startSharedBrowser').onclick=startSharedBrowser;
+$('sharedBrowserUrl').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();startSharedBrowser()}});
+$('browserBack').onclick=()=>socket.emit('browser:back');
+$('browserForward').onclick=()=>socket.emit('browser:forward');
+$('browserReload').onclick=()=>socket.emit('browser:reload');
+function browserPoint(e){const rect=sharedBrowserImage.getBoundingClientRect();return{x:Math.max(0,Math.min(browserFrameWidth,(e.clientX-rect.left)/Math.max(1,rect.width)*browserFrameWidth)),y:Math.max(0,Math.min(browserFrameHeight,(e.clientY-rect.top)/Math.max(1,rect.height)*browserFrameHeight))}}
+sharedBrowserStage.addEventListener('pointerdown',e=>{if(!sharedBrowserImage.src)return;e.preventDefault();sharedBrowserStage.focus();sharedBrowserStage.setPointerCapture?.(e.pointerId);const p=browserPoint(e);socket.emit('browser:input',{type:'down',...p,button:e.button===2?'right':'left'})});
+sharedBrowserStage.addEventListener('pointerup',e=>{if(!sharedBrowserImage.src)return;e.preventDefault();const p=browserPoint(e);socket.emit('browser:input',{type:'move',...p});socket.emit('browser:input',{type:'up',...p,button:e.button===2?'right':'left'})});
+sharedBrowserStage.addEventListener('pointermove',e=>{if(!sharedBrowserImage.src)return;const now=Date.now();if(now-lastBrowserMove<35)return;lastBrowserMove=now;socket.emit('browser:input',{type:'move',...browserPoint(e)})});
+sharedBrowserStage.addEventListener('contextmenu',e=>e.preventDefault());
+sharedBrowserStage.addEventListener('wheel',e=>{if(!sharedBrowserImage.src)return;e.preventDefault();socket.emit('browser:input',{type:'wheel',dx:e.deltaX,dy:e.deltaY})},{passive:false});
+sharedBrowserStage.addEventListener('keydown',e=>{if(!sharedBrowserImage.src)return;if(['Tab','Backspace','ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' ','Enter','Escape','Delete','Home','End','PageUp','PageDown'].includes(e.key)||e.key.length===1){e.preventDefault();socket.emit('browser:input',{type:'key',key:e.key,ctrl:e.ctrlKey,alt:e.altKey,shift:e.shiftKey,meta:e.metaKey})}});
+socket.on('browser:frame',d=>{if(!d||!d.data)return;sharedBrowserImage.src=d.data;if(d.url)$('sharedBrowserUrl').value=d.url;$('sharedBrowserStatus').textContent='Ulangan. Hamma shu brauzerni ko‘ryapti.'});
+socket.on('browser:started',d=>{if(d&&d.url)$('sharedBrowserUrl').value=d.url;$('sharedBrowserStatus').textContent='Umumiy brauzer tayyor.'});
+socket.on('browser:navigated',d=>{if(d&&d.url)$('sharedBrowserUrl').value=d.url});
+socket.on('browser:error',d=>{$('sharedBrowserStatus').textContent=d&&d.message?d.message:'Umumiy brauzer xatosi.'});
+socket.on('browser:closed',()=>{$('sharedBrowserStatus').textContent='Umumiy brauzer yopildi.';sharedBrowserImage.removeAttribute('src')});
+
 $('copyInvite').onclick=async()=>{
   const u=location.origin+location.pathname+'?room='+roomId;
   try{await navigator.clipboard.writeText(u);$('copyInvite').textContent='Nusxalandi ✓';setTimeout(()=>$('copyInvite').textContent='Havolani nusxalash',1500)}

@@ -1,0 +1,22 @@
+services:
+  togetherwatch:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: "3000"
+      BROWSER_WS_ENDPOINT: "ws://browserless:3000?token=local-dev-token"
+      # Optional: set DATABASE_URL and TURN_* for persistence and WebRTC.
+    depends_on:
+      - browserless
+    restart: unless-stopped
+  browserless:
+    image: browserless/chromium:latest
+    environment:
+      TOKEN: "local-dev-token"
+      MAX_CONCURRENT_SESSIONS: "5"
+      CONNECTION_TIMEOUT: "60000"
+    expose:
+      - "3000"
+    shm_size: "1gb"
+    restart: unless-stopped
