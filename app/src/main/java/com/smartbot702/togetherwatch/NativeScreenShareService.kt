@@ -26,6 +26,8 @@ import org.webrtc.SurfaceTextureHelper
 import org.webrtc.VideoSource
 import org.webrtc.VideoTrack
 import java.net.URI
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
 
 class NativeScreenShareService : Service() {
@@ -40,6 +42,7 @@ class NativeScreenShareService : Service() {
     private val pendingIce = ConcurrentHashMap<String, MutableList<IceCandidate>>()
     private var roomId: String = ""
     private var started = false
+    @Volatile private var iceServers: List<PeerConnection.IceServer> = defaultIceServers()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -110,6 +113,55 @@ class NativeScreenShareService : Service() {
     }
 
     private fun connectRoom(base: String, displayName: String) {
+        Thread {
+            loadIceServers(base)
+            connectRoomSocket(base, displayName)
+        }.apply { name = "TW-SignalingSetup"; isDaemon = true; start() }
+    }
+
+    private fun loadIceServers(base: String) {
+        val discovered = mutableListOf<PeerConnection.IceServer>()
+        try {
+            val connection = (URL(base.trimEnd('/') + "/api/rtc-config").openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 3000
+                readTimeout = 3000
+            }
+            connection.use {
+                if (it.responseCode in 200..299) {
+                    val root = JSONObject(it.inputStream.bufferedReader().use { reader -> reader.readText() })
+                    val entries = root.optJSONArray("iceServers")
+                    if (entries != null) for (i in 0 until entries.length()) {
+                        val entry = entries.optJSONObject(i) ?: continue
+                        val urls = entry.opt("urls")
+                        val urlList = when (urls) {
+                            is String -> listOf(urls)
+                            is org.json.JSONArray -> (0 until urls.length()).mapNotNull { index -> urls.optString(index).takeIf { value -> value.isNotBlank() } }
+                            else -> emptyList()
+                        }
+                        for (iceUrl in urlList) {
+                            val builder = PeerConnection.IceServer.builder(iceUrl)
+                            val username = entry.optString("username")
+                            val credential = entry.optString("credential")
+                            if (username.isNotBlank()) builder.setUsername(username)
+                            if (credential.isNotBlank()) builder.setPassword(credential)
+                            discovered.add(builder.createIceServer())
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w(TAG, "Could not load server ICE configuration; using STUN fallback", e)
+        }
+        iceServers = if (discovered.isNotEmpty()) discovered else defaultIceServers()
+    }
+
+    private fun defaultIceServers(): List<PeerConnection.IceServer> = listOf(
+        PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
+        PeerConnection.IceServer.builder("stun:stun.cloudflare.com:3478").createIceServer()
+    )
+
+    private fun connectRoomSocket(base: String, displayName: String) {
         val opts = IO.Options().apply {
             reconnection = true
             timeout = 15000
@@ -179,10 +231,7 @@ class NativeScreenShareService : Service() {
     }
 
     private fun makePeer(peerId: String): PeerConnection? {
-        val config = PeerConnection.RTCConfiguration(listOf(
-            PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
-            PeerConnection.IceServer.builder("stun:stun.cloudflare.com:3478").createIceServer()
-        )).apply { sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN }
+        val config = PeerConnection.RTCConfiguration(iceServers).apply { sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN }
         val pc = factory?.createPeerConnection(config, object : PeerConnection.Observer {
             override fun onIceCandidate(candidate: IceCandidate?) {
                 if (candidate != null) {
