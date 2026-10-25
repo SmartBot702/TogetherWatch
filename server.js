@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const dns = require('dns').promises;
 const net = require('net');
 const { Server } = require('socket.io');
+const auth = require('./auth');
 
 const app = express();
 const server = http.createServer(app);
@@ -13,8 +14,10 @@ const PORT = process.env.PORT || 3000;
 const rooms = new Map();
 
 app.disable('x-powered-by');
+app.use(express.json({ limit: '20kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'TogetherWatch' }));
+auth.attach(app).catch(err => { console.error('Account API initialization failed:', err); process.exit(1); });
 
 function publicIp(address) {
   if (net.isIP(address) === 4) {
