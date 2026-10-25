@@ -688,9 +688,11 @@ function createPeer(peerId,initiator){
   pc.onicecandidate=e=>{if(e.candidate&&roomId)socket.emit('rtc:ice',{to:peerId,kind:'screen',candidate:e.candidate})};
   pc.ontrack=e=>{
     if(e.streams&&e.streams[0]){
+      $('sharedScreen').muted=false;
       $('sharedScreen').srcObject=e.streams[0];
       $('sharedScreenWrap').classList.remove('hidden');
-      $('screenStatus').textContent='Xona egasining ekrani uzatilmoqda.';
+      $('screenStatus').textContent='Xona egasining ekrani uzatilmoqda. Ovoz chiqmasa, video ustiga bosing va ovozni yoqing.';
+      const playback=$('sharedScreen').play();if(playback&&playback.catch)playback.catch(()=>{$('screenStatus').textContent='Ekran ulandi. Brauzer avtomatik ijroni blokladi — videoni bosing, keyin ovozni yoqing.'});
     }
   };
   pc.onconnectionstatechange=()=>{
@@ -869,12 +871,13 @@ $('screenShare').onclick=async()=>{
   }
   try{
     screenStream=await navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
+    $('sharedScreen').muted=true;
     $('sharedScreen').srcObject=screenStream;
     $('sharedScreenWrap').classList.remove('hidden');
     $('screenShare').classList.add('hidden');
     $('stopScreenShare').classList.remove('hidden');
     screenOwner=socket.id;socket.emit('screen:started');
-    $('screenStatus').textContent='Ekraningiz ulashilmoqda. Telefonda ilova almashganda uzatish to‘xtashi mumkin; audio va himoyalangan videolar qurilma/servis cheklovlariga bog‘liq.';
+    $('screenStatus').textContent=screenStream.getAudioTracks().length?'Ekran va audio uzatilmoqda. Agar ovoz eshitilmasa, ekran tanlash oynasida “Tab audiosi / Share audio”ni yoqing.':'Ekran uzatilyapti, lekin audio trek olinmadi. Ekran tanlash oynasida “Tab audiosi / Share audio”ni yoqing. DRM himoyasi ayrim videolarni bloklashi mumkin.';
     screenStream.getTracks().forEach(t=>t.addEventListener('ended',stopScreenShare,{once:true}));
     await syncScreenPeers();
   }catch(e){
