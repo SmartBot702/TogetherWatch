@@ -6,14 +6,16 @@ This project is being developed in milestones so the APK can be built through Gi
 - Native Android launcher and a WebView for the existing TogetherWatch website.
 - Editable HTTPS server URL.
 - Native Android screen-capture permission flow using MediaProjection.
-- A foreground service using WebRTC to send the captured screen video to the existing room signaling server.
+- A foreground service using WebRTC to send captured screen video to the existing room signaling server.
+- Optional microphone audio attached to the screen stream when Android microphone permission is granted.
+- Loads ICE server configuration from `/api/rtc-config`, including TURN credentials when the server is configured.
 - Socket.IO room join, WebRTC offers/answers, and ICE candidate exchange.
 - Android runtime permission handling for the camera and microphone used by the existing web call interface.
 - GitHub Actions builds a debug APK and publishes it as a downloadable artifact.
 
 ## Still required for a Kosmi-level release
-- Capture and transmit Android system/playback audio alongside the screen. The current native screen stream sends video only; the WebView's microphone/video call is a separate feature.
-- Improve TURN configuration for restrictive mobile networks.
+- Capture and transmit Android system/playback audio alongside the screen. Microphone audio is supported separately; Android internal playback audio is not yet transmitted.
+- Test TURN connectivity on restrictive mobile networks.
 - Handle screen-owner conflicts and reconnect edge cases in the native client.
 - Test on real Android devices and different Android versions; CI compilation is not a substitute for device testing.
 - Confirm the real production HTTPS server URL and deploy the complete server stack.
