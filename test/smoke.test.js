@@ -57,6 +57,20 @@ test('playback speed control supports native, YouTube and Vimeo players', () => 
   assert.match(app, /\$\('playbackRate'\)\.disabled=true/);
 });
 
+test('room chat supports author-only editing and deletion', () => {
+  const app = read('public/app.js');
+  const server = read('server.js');
+  assert.match(server, /socket\.on\('chat:edit'/);
+  assert.match(server, /socket\.on\('chat:delete'/);
+  assert.match(server, /message\.byId !== socket\.id/);
+  assert.match(server, /message:updated/);
+  assert.match(server, /message:deleted/);
+  assert.match(app, /chat:message:updated/);
+  assert.match(app, /chat:message:deleted/);
+  assert.match(app, /Tahrirlash/);
+  assert.match(app, /O‘chirish/);
+});
+
 test('voice chat retries transient disconnects with a bounded backoff', () => {
   const app = read('public/app.js');
   assert.match(app, /function scheduleCallPeerRetry\(peerId\)/);
