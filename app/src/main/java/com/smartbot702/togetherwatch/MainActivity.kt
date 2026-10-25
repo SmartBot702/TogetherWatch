@@ -2,6 +2,7 @@ package com.smartbot702.togetherwatch
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
 import android.view.ViewGroup
 import android.webkit.CookieManager
@@ -48,6 +49,12 @@ class MainActivity : Activity() {
             text = "Saytni ochish"
             setOnClickListener { loadAddress() }
         }
+        val screenShare = Button(this).apply {
+            text = "📱 Telefon ekranini ulashish"
+            setOnClickListener {
+                startActivity(Intent(this@MainActivity, ScreenShareActivity::class.java).putExtra("serverUrl", normalizedBaseUrl()))
+            }
+        }
         webView = WebView(this).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
@@ -75,18 +82,19 @@ class MainActivity : Activity() {
             setBackgroundColor(android.graphics.Color.WHITE)
         }
         root.addView(title)
-        root.addView(address, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dp(52)
-        ))
-        root.addView(open, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dp(48)
-        ))
-        root.addView(webView, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
-        ))
+        root.addView(address, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)))
+        root.addView(open, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
+        root.addView(screenShare, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
+        root.addView(webView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
         CookieManager.getInstance().setAcceptCookie(true)
         if (savedInstanceState == null) webView.loadUrl(DEFAULT_URL)
+    }
+
+    private fun normalizedBaseUrl(): String {
+        val raw = address.text.toString().trim().ifBlank { DEFAULT_URL }
+        val url = if (raw.startsWith("https://") || raw.startsWith("http://")) raw else "https://$raw"
+        return url.substringBefore("/", url).let { url.trimEnd('/') }
     }
 
     private fun loadAddress() {
@@ -103,13 +111,13 @@ class MainActivity : Activity() {
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
+    @Suppress("DEPRECATION")
     override fun onBackPressed() {
         if (::webView.isInitialized && webView.canGoBack()) webView.goBack()
         else super.onBackPressed()
     }
 
     companion object {
-        // Edit this default if your Render service has a different generated hostname.
         private const val DEFAULT_URL = "https://togetherwatch.onrender.com"
     }
 }
