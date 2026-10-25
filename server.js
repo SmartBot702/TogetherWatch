@@ -55,7 +55,7 @@ app.use(express.json({ limit: '20kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/media/:filename', async (req, res) => {
   const filename = String(req.params.filename || '');
-  if (!/^[a-f0-9]{32}\\.(?:mp4|webm|m4v|ogv)$/.test(filename)) return res.sendStatus(404);
+  if (!/^[a-f0-9]{32}\.(?:mp4|webm|m4v|ogv)$/.test(filename)) return res.sendStatus(404);
   const filePath = path.join(UPLOADS_DIR, filename);
   let stat;
   try { stat = await fsp.stat(filePath); } catch (_) { return res.sendStatus(404); }
@@ -70,7 +70,7 @@ app.get('/media/:filename', async (req, res) => {
   };
   const range = req.headers.range;
   if (range) {
-    const match = /^bytes=(\\d*)-(\\d*)$/.exec(range);
+    const match = /^bytes=(\d*)-(\d*)$/.exec(range);
     if (!match || (!match[1] && !match[2])) return res.status(416).set('Content-Range', 'bytes */' + stat.size).end();
     let start, end;
     if (!match[1]) {
@@ -676,7 +676,7 @@ io.on('connection', socket => {
     const id = socket.data.roomId, room = rooms.get(id);
     if (!room || !room.members.has(socket.id)) return reply({ ok: false, error: 'Avval tomosha xonasiga kiring.' });
     if (socket.data.movieUpload) return reply({ ok: false, error: 'Avvalgi video yuklanishi hali tugamadi.' });
-    const originalName = typeof (p && p.name) === 'string' ? path.basename(p.name).replace(/[^\\p{L}\\p{N}._ -]/gu, '').trim().slice(0, 120) : '';
+    const originalName = typeof (p && p.name) === 'string' ? path.basename(p.name).replace(/[^\p{L}\p{N}._ -]/gu, '').trim().slice(0, 120) : '';
     const ext = path.extname(originalName).toLowerCase();
     const size = Number(p && p.size);
     if (!originalName || !VIDEO_TYPES[ext]) return reply({ ok: false, error: 'Faqat MP4, WebM, M4V yoki OGV video fayllari qo‘llab-quvvatlanadi.' });
