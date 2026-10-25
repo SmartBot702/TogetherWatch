@@ -233,10 +233,34 @@ test('two clients share a room, activity selection, and chat in realtime', async
     guest.off('chat:message', countBurst);
     assert.equal(burstMessages, 8, 'only eight chat messages should pass in a five-second window');
 
+    // Only the host may advance the shared queue; after host handoff the new host can.
+    const queueOnePromise = waitForEvent(guest, 'queue:updated');
+    host.emit('queue:add', { mediaType: 'youtube', mediaId: 'M7lc1UVf-VE' });
+    const queueOne = await queueOnePromise;
+    assert.equal(queueOne.length, 1);
+    const queueTwoPromise = waitForEvent(guest, 'queue:updated');
+    host.emit('queue:add', { mediaType: 'youtube', mediaId: 'dQw4w9WgXcQ' });
+    const queueTwo = await queueTwoPromise;
+    assert.equal(queueTwo.length, 2);
+
+    let loadedAfterUnauthorizedNext = false;
+    const unauthorizedLoadListener = () => { loadedAfterUnauthorizedNext = true; };
+    guest.on('video:loaded', unauthorizedLoadListener);
+    guest.emit('queue:next');
+    await new Promise(resolve => setTimeout(resolve, 100));
+    guest.off('video:loaded', unauthorizedLoadListener);
+    assert.equal(loadedAfterUnauthorizedNext, false, 'non-host cannot advance the queue');
+
     const promotedPromise = waitForEvent(guest, 'room:role');
     host.disconnect();
     const promoted = await promotedPromise;
     assert.equal(promoted.isHost, true, 'the remaining member should become host when the host disconnects');
+
+    const nextVideoPromise = waitForEvent(guest, 'video:loaded');
+    guest.emit('queue:next');
+    const nextVideo = await nextVideoPromise;
+    assert.equal(nextVideo.mediaType, 'youtube');
+    assert.equal(nextVideo.mediaId, 'M7lc1UVf-VE', 'new host should be able to advance the persisted queue');
   } finally {
     if (host) host.disconnect();
     if (guest) guest.disconnect();
