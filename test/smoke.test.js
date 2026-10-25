@@ -83,6 +83,9 @@ test('chat search, member mentions, and shared-browser media detection are avail
   assert.match(server, /browser:media-candidate/);
   assert.match(server, /socket\.on\('browser:use-media'/);
   assert.match(server, /r\.hostId !== socket\.id/);
+  assert.match(server, /app\.get\('\/api\/media-proxy'/);
+  assert.match(server, /req\.headers\.range/);
+  assert.match(server, /Readable\.fromWeb\(upstream\.body\)/);
 });
 
 test('room chat supports author-only editing and deletion', () => {
