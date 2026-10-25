@@ -258,6 +258,11 @@ io.on('connection', socket => {
     enter(socket, id, cleanName(p && p.name), false);
   });
   socket.on('room:leave', () => leave(socket));
+  socket.on('chat:typing', p => {
+    const id = socket.data.roomId, r = rooms.get(id);
+    if (!r || !r.members.has(socket.id)) return;
+    socket.to(id).emit('chat:typing', { from: socket.id, name: socket.data.name, typing: Boolean(p && p.typing) });
+  });
   socket.on('chat:send', p => {
     const id = socket.data.roomId, r = rooms.get(id);
     const text = typeof (p && p.text) === 'string' ? p.text.trim().slice(0, 500) : '';
