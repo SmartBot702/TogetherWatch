@@ -46,6 +46,14 @@ app.disable('x-powered-by');
 app.use(express.json({ limit: '20kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'TogetherWatch' }));
+app.get('/api/rooms/public', (_req, res) => {
+  const publicRooms = Array.from(rooms.values())
+    .filter(room => room.isPublic && room.members && room.members.size > 0)
+    .map(room => ({ id: room.id, title: room.title || 'Tomosha xonasi', theme: room.theme || 'violet', count: room.members.size, capacity: 20 }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 50);
+  res.set('Cache-Control', 'no-store').json({ ok: true, rooms: publicRooms });
+});
 app.get('/api/rtc-config', (_req, res) => {
   const iceServers = [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -227,7 +235,7 @@ function enter(socket, id, name, create, options = {}) {
   if (!name) return error(socket, 'Ismingizni kiriting.');
   let r = rooms.get(id);
   if (r && !r.members.size && r.emptyAt && Date.now() - r.emptyAt > 6 * 60 * 60 * 1000) { discardRoom(id); r = null; }
-  if (!r && create) { r = { id, hostId: socket.id, members: new Map(), callReady: new Set(), state: emptyState(), queue: [], messages: [], siteUrl: null, siteExpanded: false, screenOwner: null, title: cleanRoomTitle(options.title) || 'Tomosha xonasi', theme: cleanRoomTheme(options.theme), game: { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 } }; rooms.set(id, r); }
+  if (!r && create) { r = { id, hostId: socket.id, members: new Map(), callReady: new Set(), state: emptyState(), queue: [], messages: [], siteUrl: null, siteExpanded: false, screenOwner: null, title: cleanRoomTitle(options.title) || 'Tomosha xonasi', theme: cleanRoomTheme(options.theme), isPublic: Boolean(options.isPublic), game: { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 } }; rooms.set(id, r); }
   if (!r.title) r.title = 'Tomosha xonasi';
   if (!r.theme) r.theme = 'violet';
   if (r && !Array.isArray(r.messages)) r.messages = [];
@@ -240,7 +248,7 @@ function enter(socket, id, name, create, options = {}) {
   socket.data.roomId = id;
   socket.data.name = name;
   r.members.set(socket.id, { id: socket.id, name });
-  socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, title: r.title, theme: r.theme, state: r.state, queue: r.queue || [], chatHistory: r.messages.slice(-100), siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner, game: r.game || { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 } });
+  socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, title: r.title, theme: r.theme, state: r.state, queue: r.queue || [], chatHistory: r.messages.slice(-100), siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner, isPublic: Boolean(r.isPublic), game: r.game || { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 } });
   for (const memberId of (r.callReady || [])) if (memberId !== socket.id) socket.emit('rtc:ready', { from: memberId, ready: true });
   socket.to(id).emit('room:system', name + ' xonaga qo‘shildi.');
   broadcastPeople(id);
@@ -253,7 +261,7 @@ io.on('connection', socket => {
     if (!n) return error(socket, 'Ismingizni kiriting.');
     let id;
     do { id = makeCode(); } while (rooms.has(id));
-    enter(socket, id, n, true, { title: cleanRoomTitle(p && p.title), theme: cleanRoomTheme(p && p.theme) });
+    enter(socket, id, n, true, { title: cleanRoomTitle(p && p.title), theme: cleanRoomTheme(p && p.theme), isPublic: Boolean(p && p.isPublic) });
   });
   socket.on('room:join', p => {
     leave(socket);
