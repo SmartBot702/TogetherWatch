@@ -362,7 +362,7 @@ function browserInput(room, socket, payload) {
     } else if (p.type === 'back') await session.page.goBack({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
     else if (p.type === 'forward') await session.page.goForward({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
     else if (p.type === 'reload') await session.page.reload({ waitUntil: 'domcontentloaded', timeout: 20000 });
-    await captureSharedBrowser(room, session);
+    if (p.type !== 'move') await captureSharedBrowser(room, session);
   }).catch(err => {
     if (room.browserSession === session) socket.emit('browser:error', { message: err && /timeout/i.test(err.message) ? 'Sahifa javob bermadi yoki yuklanish vaqti tugadi.' : 'Umumiy brauzer amali bajarilmadi.' });
   });
@@ -394,7 +394,7 @@ io.on('connection', socket => {
       socket.emit('browser:started', { url: session.page.url() });
     } catch (err) {
       socket.emit('browser:error', { message: err && err.message ? err.message.slice(0, 240) : 'Umumiy brauzer ishga tushmadi.' });
-    }
+    } finally { room.browserStarting = false; }
   });
   socket.on('browser:input', p => {
     const id = socket.data.roomId, room = rooms.get(id);
