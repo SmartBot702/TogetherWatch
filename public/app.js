@@ -146,6 +146,16 @@ $('leaveRoom').onclick=()=>{
   socket.emit('room:leave');destroyPlayer();roomId=null;history.replaceState({},'',location.pathname);
   $('workspace').classList.add('hidden');$('entry').classList.remove('hidden');$('how').classList.remove('hidden');
 };
+// Quick-launch activity cards route users to real, supported room controls.
+document.querySelectorAll('[data-launch]').forEach(button=>button.addEventListener('click',()=>{
+  const action=button.dataset.launch;
+  const entry=document.getElementById('entry');
+  if(!roomId){entry.scrollIntoView({behavior:'smooth',block:'center'});const nickname=document.getElementById('nickname');if(nickname)nickname.focus({preventScroll:true});const msg=document.getElementById('entryError');if(msg)msg.textContent='Avval xona yarating yoki mavjud xona kodini kiriting.';return}
+  const targets={watch:'youtubeUrl',browser:'siteUrlInput',call:'startCall',screen:'screenShare'};
+  const target=document.getElementById(targets[action]);
+  if(target){target.scrollIntoView({behavior:'smooth',block:'center'});if(action==='watch'||action==='browser')target.focus({preventScroll:true});else target.click()}
+}));
+
 function parseMedia(raw){
   try{
     const u=new URL(raw);
