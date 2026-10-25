@@ -202,6 +202,21 @@ function normalizeMedia(p) {
     try { const source = new URL(p.mediaUrl); const hash = source.searchParams.get('h') || ''; if (source.hostname === 'player.vimeo.com' && source.pathname === '/video/' + id && /^[A-Za-z0-9]{1,64}$/.test(hash)) mediaUrl += '?h=' + encodeURIComponent(hash); } catch (_) {}
     return { mediaType: 'vimeo', mediaId: id, mediaUrl, videoId: null };
   }
+  if (type === 'vk') {
+    const id = String(p.mediaId || '');
+    const match = id.match(/^(-?\d{1,15})_(\d{1,20})$/);
+    if (!match) return null;
+    let hash = '';
+    try { const source = new URL(p.mediaUrl); hash = source.searchParams.get('hash') || ''; } catch (_) {}
+    if (hash && !/^[A-Za-z0-9_-]{1,128}$/.test(hash)) hash = '';
+    const mediaUrl = 'https://vk.com/video_ext.php?oid=' + encodeURIComponent(match[1]) + '&id=' + encodeURIComponent(match[2]) + (hash ? '&hash=' + encodeURIComponent(hash) : '');
+    return { mediaType: 'vk', mediaId: id, mediaUrl, videoId: null };
+  }
+  if (type === 'ok') {
+    const id = String(p.mediaId || '');
+    if (!/^\d{1,24}$/.test(id)) return null;
+    return { mediaType: 'ok', mediaId: id, mediaUrl: 'https://ok.ru/videoembed/' + id, videoId: null };
+  }
   if (type === 'local') {
     const id = String(p.mediaId || '');
     if (!/^local-[a-f0-9]{16}$/.test(id)) return null;
