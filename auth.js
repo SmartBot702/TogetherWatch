@@ -106,8 +106,41 @@ async function deleteRoomSnapshot(roomId) {
   if (pool && /^[A-Z0-9]{6}$/.test(roomId || '')) await pool.query('DELETE FROM togetherwatch_rooms WHERE room_id = $1', [roomId]);
 }
 
-async function attach(app) {
+async function attach(app, io) {
   await load();
+  if (io) {
+    io.use((socket, next) => {
+      const user = currentUser({ headers: { cookie: socket.handshake.headers.cookie || '' } });
+      socket.data.accountUserId = user ? user.id : null;
+      next();
+    });
+    io.on('connection', socket => {
+      const accountId = socket.data.accountUserId;
+      if (accountId) socket.join('account:' + accountId);
+      socket.on('dm:send', async (p, acknowledge) => {
+        const respond = typeof acknowledge === 'function' ? acknowledge : () => {};
+        const sender = currentUser({ headers: { cookie: socket.handshake.headers.cookie || '' } });
+        if (!sender || sender.id !== accountId) return respond({ ok: false, error: 'Shaxsiy xabar yuborish uchun qayta kiring.' });
+        const otherId = clean(p && p.to, 64);
+        const messageText = clean(p && p.text, 2000);
+        if (!messageText) return respond({ ok: false, error: 'Xabar bo‘sh bo‘lmasin.' });
+        if (!otherId || otherId === sender.id) return respond({ ok: false, error: 'Qabul qiluvchi noto‘g‘ri.' });
+        if (!areFriends(sender.id, otherId)) return respond({ ok: false, error: 'Shaxsiy chat uchun avval do‘st bo‘ling.' });
+        const message = { id: crypto.randomUUID(), from: sender.id, to: otherId, text: messageText, createdAt: Date.now() };
+        state.messages.push(message);
+        if (state.messages.length > 10000) state.messages = state.messages.slice(-10000);
+        try { await save(); }
+        catch (_) {
+          state.messages = state.messages.filter(item => item.id !== message.id);
+          return respond({ ok: false, error: 'Xabarni saqlab bo‘lmadi.' });
+        }
+        const outgoing = { ...message, sender: publicUser(sender) };
+        io.to('account:' + otherId).emit('dm:message', outgoing);
+        io.to('account:' + sender.id).emit('dm:message', outgoing);
+        respond({ ok: true, message: outgoing });
+      });
+    });
+  }
   app.use('/api/auth', require('express').json({ limit: '20kb' }));
   app.get('/api/auth/me', (req, res) => {
     const user = currentUser(req);
