@@ -592,6 +592,7 @@ io.on('connection', socket => {
     const file = { id: crypto.randomBytes(10).toString('hex'), name, mime, size: bytes.length, data: p.data, by: socket.data.name, at: Date.now() };
     r.files.push(file);
     io.to(id).emit('file:shared', file);
+    persistRoom(r);
   });
 
   socket.on('room:leave', () => leave(socket));
@@ -748,7 +749,7 @@ auth.attach(app, io).then(async () => {
       messages: Array.isArray(payload.messages) ? payload.messages.slice(-100) : [],
       siteUrl: payload.siteUrl || null, siteExpanded: Boolean(payload.siteExpanded),
       title: typeof payload.title === 'string' ? payload.title : 'Tomosha xonasi', theme: cleanRoomTheme(payload.theme),
-      screenOwner: null, files: [], links: Array.isArray(payload.links) ? payload.links.slice(0, 30) : [], boardStrokes: Array.isArray(payload.boardStrokes) ? payload.boardStrokes.slice(-2000) : [], isPublic: Boolean(payload.isPublic), emptyAt: saved.emptyAt || Date.now()
+      screenOwner: null, files: Array.isArray(payload.files) ? payload.files.filter(file => file && typeof file.id === 'string' && typeof file.name === 'string' && typeof file.mime === 'string' && typeof file.data === 'string').slice(0, 5) : [], links: Array.isArray(payload.links) ? payload.links.slice(0, 30) : [], boardStrokes: Array.isArray(payload.boardStrokes) ? payload.boardStrokes.slice(-2000) : [], isPublic: Boolean(payload.isPublic), emptyAt: saved.emptyAt || Date.now()
     };
     rooms.set(room.id, room);
     persistRoom(room, true);
