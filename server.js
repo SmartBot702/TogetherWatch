@@ -195,7 +195,7 @@ function normalizeMedia(p) {
     const raw = typeof p.mediaUrl === 'string' ? p.mediaUrl.slice(0, 2048) : '';
     try {
       const u = new URL(raw);
-      const okPath = type === 'hls' ? /\.m3u8$/i.test(u.pathname) : /\.(mp4|webm)$/i.test(u.pathname);
+      const okPath = type === 'hls' ? /\.m3u8$/i.test(u.pathname) : true;
       if (!['http:', 'https:'].includes(u.protocol) || !okPath) return null;
       return { mediaType: type, mediaId: raw, mediaUrl: raw, videoId: null };
     } catch (_) { return null; }
