@@ -97,6 +97,7 @@ async function saveRoomSnapshot(room) {
   const payload = {
     state: room.state || {}, queue: Array.isArray(room.queue) ? room.queue.slice(0, 50) : [],
     messages: Array.isArray(room.messages) ? room.messages.slice(-100) : [],
+    files: Array.isArray(room.files) ? room.files.slice(0, 5) : [],
     siteUrl: typeof room.siteUrl === 'string' ? room.siteUrl : null,
     siteExpanded: Boolean(room.siteExpanded),
     title: typeof room.title === 'string' ? room.title.slice(0, 60) : 'Tomosha xonasi',
