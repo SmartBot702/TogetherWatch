@@ -1,0 +1,17 @@
+{
+  "id": "/",
+  "name": "TogetherWatch — Birga tomosha qiling",
+  "short_name": "TogetherWatch",
+  "description": "Do‘stlar bilan masofadan birga tomosha qiling, suhbatlashing va o‘ynang.",
+  "lang": "uz",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#090810",
+  "theme_color": "#090810",
+  "categories": ["social", "entertainment"],
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
