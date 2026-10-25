@@ -184,7 +184,7 @@ function leave(socket) {
 function enter(socket, id, name, create) {
   if (!name) return error(socket, 'Ismingizni kiriting.');
   let r = rooms.get(id);
-  if (!r && create) { r = { id, hostId: socket.id, members: new Map(), callReady: new Set(), state: emptyState(), siteUrl: null, siteExpanded: false, screenOwner: null }; rooms.set(id, r); }
+  if (!r && create) { r = { id, hostId: socket.id, members: new Map(), callReady: new Set(), state: emptyState(), queue: [], siteUrl: null, siteExpanded: false, screenOwner: null }; rooms.set(id, r); }
   if (!r) return error(socket, 'Xona topilmadi. Kodni tekshiring.');
   if (r.members.size >= 20) return error(socket, 'Xona to‘la (maksimal 20 kishi).');
   if (Array.from(r.members.values()).some(m => m.name.toLowerCase() === name.toLowerCase())) return error(socket, 'Bu ism allaqachon ishlatilmoqda.');
@@ -194,7 +194,7 @@ function enter(socket, id, name, create) {
   socket.data.roomId = id;
   socket.data.name = name;
   r.members.set(socket.id, { id: socket.id, name });
-  socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, state: r.state, siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner });
+  socket.emit('room:joined', { roomId: id, isHost: r.hostId === socket.id, state: r.state, queue: r.queue || [], siteUrl: r.siteUrl, siteExpanded: r.siteExpanded, screenOwner: r.screenOwner });
   for (const memberId of (r.callReady || [])) if (memberId !== socket.id) socket.emit('rtc:ready', { from: memberId, ready: true });
   socket.to(id).emit('room:system', name + ' xonaga qo‘shildi.');
   broadcastPeople(id);
@@ -219,6 +219,33 @@ io.on('connection', socket => {
     const id = socket.data.roomId, r = rooms.get(id);
     const text = typeof (p && p.text) === 'string' ? p.text.trim().slice(0, 500) : '';
     if (r && text) io.to(id).emit('chat:message', { name: socket.data.name, text, at: Date.now() });
+  });
+  socket.on('queue:add', p => {
+    const id = socket.data.roomId, r = rooms.get(id);
+    if (!r || !r.members.has(socket.id)) return error(socket, 'Avval tomosha xonasiga kiring.');
+    const media = normalizeMedia(p);
+    if (!media) return error(socket, 'Navbatga YouTube, Vimeo, MP4/WebM yoki HLS havolasini qo‘shing.');
+    r.queue = r.queue || [];
+    if (r.queue.length >= 50) return error(socket, 'Video navbati 50 ta bilan cheklangan.');
+    r.queue.push({ ...media, queueId: crypto.randomBytes(8).toString('hex'), addedBy: socket.data.name });
+    io.to(id).emit('queue:updated', r.queue);
+  });
+  socket.on('queue:remove', p => {
+    const id = socket.data.roomId, r = rooms.get(id);
+    if (!r || !r.members.has(socket.id) || !p || typeof p.queueId !== 'string') return;
+    r.queue = (r.queue || []).filter(item => item.queueId !== p.queueId);
+    io.to(id).emit('queue:updated', r.queue);
+  });
+  socket.on('queue:play', p => {
+    const id = socket.data.roomId, r = rooms.get(id);
+    if (!r || !r.members.has(socket.id) || !p || typeof p.queueId !== 'string') return;
+    const item = (r.queue || []).find(entry => entry.queueId === p.queueId);
+    if (!item) return;
+    r.queue = r.queue.filter(entry => entry.queueId !== p.queueId);
+    const { queueId, addedBy, ...media } = item;
+    r.state = { ...media, isPlaying: false, currentTime: 0, updatedAt: Date.now() };
+    io.to(id).emit('video:loaded', r.state);
+    io.to(id).emit('queue:updated', r.queue);
   });
   socket.on('video:load', p => {
     const id = socket.data.roomId, r = rooms.get(id);

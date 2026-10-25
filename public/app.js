@@ -1,7 +1,7 @@
 (function(){
 const $=id=>document.getElementById(id);
 const socket=io();
-let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null,callStream=null,siteUrl=null,siteExpanded=false,screenOwner=null,hlsInstance=null;const peers=new Map(),callPeers=new Map(),callReady=new Set(),pendingScreenIce=new Map(),pendingCallIce=new Map();
+let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null,callStream=null,siteUrl=null,siteExpanded=false,screenOwner=null,hlsInstance=null,queueItems=[];const peers=new Map(),callPeers=new Map(),callReady=new Set(),pendingScreenIce=new Map(),pendingCallIce=new Map();
 
 socket.on('connect',()=>{$('connection').textContent='● Serverga ulandi'});
 socket.on('disconnect',()=>{$('connection').textContent='● Aloqa uzildi'});
@@ -25,6 +25,7 @@ socket.on('room:joined',d=>{
   $('roomCode').textContent=roomId;$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
   $('loadVideo').disabled=false;$('youtubeUrl').disabled=false;$('mediaType').disabled=false;$('screenShare').disabled=!!screenOwner&&screenOwner!==socket.id;$('chat').innerHTML='';
   history.replaceState({},'',location.pathname+'?room='+roomId);
+  renderQueue(d.queue||[]);
   if(d.state&&(d.state.mediaType||d.state.videoId))loadMedia(normalizeState(d.state),d.state);
 });
 socket.on('room:role',d=>{
@@ -199,6 +200,36 @@ async function applyState(s){
   }catch(e){}
   setTimeout(()=>{remote=false},1300);
 }
+function renderQueue(items){
+  queueItems=Array.isArray(items)?items:[];
+  const list=$('videoQueue');list.replaceChildren();
+  $('queueCount').textContent=String(queueItems.length);
+  $('queueNext').disabled=queueItems.length===0;
+  if(!queueItems.length){const empty=document.createElement('div');empty.className='muted small';empty.textContent='Navbat hozircha bo‘sh.';list.append(empty);return}
+  queueItems.forEach((item,index)=>{
+    const row=document.createElement('div');row.className='queue-item';
+    const details=document.createElement('div');details.className='queue-details';
+    const title=document.createElement('strong');
+    let label=(item.mediaType||'video').toUpperCase();
+    if(item.mediaType==='youtube')label='YouTube · '+item.mediaId;
+    else if(item.mediaType==='vimeo')label='Vimeo · '+item.mediaId;
+    else{try{label=(item.mediaType||'VIDEO').toUpperCase()+' · '+new URL(item.mediaUrl).hostname}catch(e){}}
+    title.textContent=(index+1)+'. '+label;
+    const by=document.createElement('div');by.className='muted small';by.textContent='Qo‘shdi: '+(item.addedBy||'ishtirokchi');
+    details.append(title,by);
+    const actions=document.createElement('div');actions.className='queue-actions';
+    const playButton=document.createElement('button');playButton.className='btn primary';playButton.textContent='▶';playButton.title='Hozir ijro etish';playButton.onclick=()=>socket.emit('queue:play',{queueId:item.queueId});
+    const removeButton=document.createElement('button');removeButton.className='btn';removeButton.textContent='×';removeButton.title='Navbatdan olib tashlash';removeButton.onclick=()=>socket.emit('queue:remove',{queueId:item.queueId});
+    actions.append(playButton,removeButton);row.append(details,actions);list.append(row);
+  });
+}
+socket.on('queue:updated',renderQueue);
+$('queueAdd').onclick=()=>{
+  const raw=$('youtubeUrl').value.trim(),next=parseMedia(raw);
+  if(!next){$('queueMessage').textContent='Navbatga YouTube, Vimeo, MP4/WebM yoki .m3u8 to‘g‘ridan-to‘g‘ri havolasini kiriting.';return}
+  $('queueMessage').textContent='Video navbatga qo‘shilmoqda…';socket.emit('queue:add',next);
+};
+$('queueNext').onclick=()=>{if(queueItems.length)socket.emit('queue:play',{queueId:queueItems[0].queueId})};
 $('loadVideo').onclick=async()=>{
   const raw=$('youtubeUrl').value.trim(),next=parseMedia(raw);
   if(next){socket.emit('video:load',next);return}
