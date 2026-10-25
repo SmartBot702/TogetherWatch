@@ -45,6 +45,18 @@ test('VK Video and OK links are parsed into platform embed players', () => {
   assert.match(server, /if \(type === 'ok'\)/);
 });
 
+test('Rutube video links are parsed into a trusted embed player', () => {
+  const app = read('public/app.js');
+  const server = read('server.js');
+  const html = read('public/index.html');
+  assert.match(app, /mediaType:'rutube',mediaId:match\[1\],mediaUrl:'https:\/\/rutube\.ru\/play\/embed\//);
+  assert.match(app, /next\.mediaType==='vk'\|\|next\.mediaType==='ok'\|\|next\.mediaType==='rutube'/);
+  assert.match(app, /'Rutube video'/);
+  assert.match(server, /if \(type === 'rutube'\)/);
+  assert.match(server, /https:\/\/rutube\.ru\/play\/embed\//);
+  assert.match(html, /<option value="rutube">Rutube<\/option>/);
+});
+
 test('all supported video players advance the queue at most once per ended media item', () => {
   const app = read('public/app.js');
   assert.match(app, /function advanceQueueOnEnded\(\)/);
