@@ -3,7 +3,7 @@ const $=id=>document.getElementById(id);
 const socket=io();
 let rtcIceServers=[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun.cloudflare.com:3478'}];
 fetch('/api/rtc-config',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(c=>{if(c&&Array.isArray(c.iceServers)&&c.iceServers.length)rtcIceServers=c.iceServers}).catch(()=>{});
-let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null,callStream=null,siteUrl=null,siteExpanded=false,screenOwner=null,hlsInstance=null,queueItems=[],volume=1,muted=false;const peers=new Map(),callPeers=new Map(),callReady=new Set(),pendingScreenIce=new Map(),pendingCallIce=new Map();
+let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null,callStream=null,siteUrl=null,siteExpanded=false,screenOwner=null,hlsInstance=null,queueItems=[],volume=1,muted=false,seekDuration=0,seeking=false;const peers=new Map(),callPeers=new Map(),callReady=new Set(),pendingScreenIce=new Map(),pendingCallIce=new Map();
 
 socket.on('connect',()=>{
   $('connection').textContent='● Serverga ulandi';
@@ -132,7 +132,8 @@ function destroyPlayer(){
   }
   $('player').replaceChildren();player=null;playerReady=false;media=null;
   $('placeholder').classList.remove('hidden');
-  ['playPause','back','forward','muteToggle','volume','videoFullscreen'].forEach(id=>$(id).disabled=true);
+  ['playPause','back','forward','muteToggle','volume','videoFullscreen','seekRange'].forEach(id=>$(id).disabled=true);
+  $('seekRange').value='0';$('currentTime').textContent='0:00';$('duration').textContent='0:00';seekDuration=0;seeking=false;
 }
 function markReady(state){
   playerReady=true;
@@ -187,6 +188,29 @@ async function getTimeAsync(){
   if(!player||!playerReady)return 0;
   try{if(media.mediaType==='vimeo')return await player.getCurrentTime();return getTime()}catch(e){return 0}
 }
+async function getDurationAsync(){
+  if(!player||!playerReady||!media)return 0;
+  try{
+    if(media.mediaType==='youtube')return Number(player.getDuration())||0;
+    if(media.mediaType==='vimeo')return Number(await player.getDuration())||0;
+    if(media.mediaType==='file'||media.mediaType==='hls')return Number.isFinite(player.duration)?player.duration:0;
+  }catch(e){}
+  return 0;
+}
+function formatTime(value){
+  const seconds=Math.max(0,Math.floor(Number(value)||0));
+  const h=Math.floor(seconds/3600),m=Math.floor((seconds%3600)/60),s=seconds%60;
+  return h?`${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`:`${m}:${String(s).padStart(2,'0')}`;
+}
+async function updatePlayerTimeline(){
+  if(!playerReady||!player||!media)return;
+  const [current,total]=await Promise.all([getTimeAsync(),getDurationAsync()]);
+  if(!Number.isFinite(total)||total<=0)return;
+  seekDuration=total;
+  $('duration').textContent=formatTime(total);
+  if(!seeking){$('seekRange').value=String(Math.min(100,Math.max(0,current/total*100)));$('currentTime').textContent=formatTime(current)}
+  $('seekRange').disabled=false;
+}
 async function isPlaying(){
   if(!player||!playerReady)return false;
   try{if(media.mediaType==='youtube')return player.getPlayerState()===YT.PlayerState.PLAYING;if(media.mediaType==='file'||media.mediaType==='hls')return !player.paused;if(media.mediaType==='vimeo')return (await player.getPaused())===false}catch(e){}
@@ -210,6 +234,19 @@ async function applyVolume(){
   $('volume').value=String(value);
 }
 $('muteToggle').onclick=()=>{muted=!muted;applyVolume()};
+$('seekRange').addEventListener('input',e=>{
+  seeking=true;
+  const target=seekDuration*(Number(e.target.value)||0)/100;
+  $('currentTime').textContent=formatTime(target);
+});
+$('seekRange').addEventListener('change',async e=>{
+  if(!seekDuration){seeking=false;return}
+  const target=seekDuration*(Number(e.target.value)||0)/100;
+  await seekTo(target);
+  emitPlayback(await isPlaying(),target);
+  seeking=false;
+});
+setInterval(updatePlayerTimeline,1000);
 $('volume').addEventListener('input',e=>{volume=Math.max(0,Math.min(1,Number(e.target.value)||0));if(volume>0)muted=false;applyVolume()});
 $('videoFullscreen').onclick=async()=>{
   try{
