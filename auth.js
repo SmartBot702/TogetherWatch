@@ -98,6 +98,7 @@ async function saveRoomSnapshot(room) {
     state: room.state || {}, queue: Array.isArray(room.queue) ? room.queue.slice(0, 50) : [],
     messages: Array.isArray(room.messages) ? room.messages.slice(-100) : [],
     files: Array.isArray(room.files) ? room.files.slice(0, 5) : [],
+    videos: Array.isArray(room.videos) ? room.videos.slice(0, 20).map(file => ({ id: file.id, name: file.name, ext: file.ext, mime: file.mime, size: file.size, by: file.by, at: file.at, url: file.url })) : [],
     siteUrl: typeof room.siteUrl === 'string' ? room.siteUrl : null,
     siteExpanded: Boolean(room.siteExpanded),
     title: typeof room.title === 'string' ? room.title.slice(0, 60) : 'Tomosha xonasi',
