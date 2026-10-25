@@ -3,7 +3,7 @@ const $=id=>document.getElementById(id);
 const socket=io();
 let rtcIceServers=[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun.cloudflare.com:3478'}];
 fetch('/api/rtc-config',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(c=>{if(c&&Array.isArray(c.iceServers)&&c.iceServers.length)rtcIceServers=c.iceServers}).catch(()=>{});
-let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null,callStream=null,siteUrl=null,siteExpanded=false,screenOwner=null,hlsInstance=null,queueItems=[],volume=1,muted=false,seekDuration=0,seeking=false,localFile=null,localFileId=null,localObjectUrl=null,latestPlaybackState=null,endedQueueAdvanceKey=null;const peers=new Map(),callPeers=new Map(),callReady=new Set(),pendingScreenIce=new Map(),pendingCallIce=new Map();
+let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null,callStream=null,siteUrl=null,siteExpanded=false,screenOwner=null,hlsInstance=null,queueItems=[],volume=1,muted=false,seekDuration=0,seeking=false,localFile=null,localFileId=null,localObjectUrl=null,subtitleObjectUrl=null,subtitleTrack=null,latestPlaybackState=null,endedQueueAdvanceKey=null;const peers=new Map(),callPeers=new Map(),callReady=new Set(),pendingScreenIce=new Map(),pendingCallIce=new Map();
 
 socket.on('connect',()=>{
   $('connection').textContent='● Serverga ulandi';
@@ -545,7 +545,42 @@ function normalizeState(s){
   if(s.videoId)return{mediaType:'youtube',mediaId:s.videoId,mediaUrl:'https://www.youtube.com/watch?v='+s.videoId,videoId:s.videoId};
   return null;
 }
+function clearSubtitles(){
+  if(subtitleTrack){try{subtitleTrack.remove()}catch(_){}subtitleTrack=null}
+  if(subtitleObjectUrl){URL.revokeObjectURL(subtitleObjectUrl);subtitleObjectUrl=null}
+  $('subtitleFileInput').value='';
+  $('clearSubtitles').disabled=true;
+  $('subtitleStatus').textContent=player&&player.tagName==='VIDEO'?'Subtitr tanlanmagan':'Subtitr uchun oddiy video player kerak';
+}
+function convertSubtitleToVtt(text,fileName){
+  if(/\.vtt$/i.test(fileName))return /^\uFEFF?WEBVTT(?:\s|$)/.test(text.trimStart())?text:'WEBVTT\n\n'+text;
+  const converted=text.replace(/\r/g,'').replace(/(\d{2}:\d{2}:\d{2}),(\d{3})(\s*-->\s*\d{2}:\d{2}:\d{2}),(\d{3})/g,'$1.$2$3.$4');
+  return 'WEBVTT\n\n'+converted;
+}
+async function attachSubtitles(file){
+  if(!file)return;
+  if(file.size>2*1024*1024){$('subtitleStatus').textContent='Subtitr 2 MB dan kichik bo‘lishi kerak.';$('subtitleFileInput').value='';return}
+  if(!player||player.tagName!=='VIDEO'){ $('subtitleStatus').textContent='Subtitr faqat MP4/WebM/HLS/yuklangan video playerda ishlaydi.';$('subtitleFileInput').value='';return}
+  const ext=(file.name.split('.').pop()||'').toLowerCase();
+  if(!['srt','vtt'].includes(ext)){$('subtitleStatus').textContent='Faqat .srt yoki .vtt fayl tanlang.';$('subtitleFileInput').value='';return}
+  try{
+    const source=await file.text();
+    const vtt=convertSubtitleToVtt(source,file.name);
+    if(subtitleTrack){subtitleTrack.remove();subtitleTrack=null}
+    if(subtitleObjectUrl)URL.revokeObjectURL(subtitleObjectUrl);
+    subtitleObjectUrl=URL.createObjectURL(new Blob([vtt],{type:'text/vtt;charset=utf-8'}));
+    const track=document.createElement('track');track.kind='subtitles';track.label=file.name;track.srclang='uz';track.default=true;track.src=subtitleObjectUrl;
+    track.addEventListener('load',()=>{try{track.track.mode='showing'}catch(_){}});
+    player.append(track);subtitleTrack=track;
+    try{track.track.mode='showing'}catch(_){}
+    $('clearSubtitles').disabled=false;
+    $('subtitleStatus').textContent='Subtitr yuklandi: '+file.name+' (faqat sizda ko‘rinadi)';
+  }catch(_){$('subtitleStatus').textContent='Subtitr faylini o‘qib bo‘lmadi.'}
+}
+$('subtitleFileInput').addEventListener('change',e=>attachSubtitles(e.target.files&&e.target.files[0]));
+$('clearSubtitles').addEventListener('click',clearSubtitles);
 function destroyPlayer(){
+  clearSubtitles();
   if(hlsInstance){try{hlsInstance.destroy()}catch(e){}hlsInstance=null}
   if(player){
     try{if(media&&media.mediaType==='youtube'&&player.destroy)player.destroy();else if(media&&media.mediaType==='vimeo'&&player.destroy)player.destroy();else if(media&&(media.mediaType==='file'||media.mediaType==='local')){player.pause();player.removeAttribute('src');player.load()}}catch(e){}
@@ -559,6 +594,8 @@ function markReady(state){
   playerReady=true;
   ['playPause','back','forward','muteToggle','volume','videoFullscreen'].forEach(k=>$(k).disabled=false);
   $('playbackRate').disabled=!(media&&['youtube','vimeo','file','hls','local'].includes(media.mediaType));
+  $('subtitleFileInput').disabled=!(player&&player.tagName==='VIDEO');
+  $('subtitleStatus').textContent=player&&player.tagName==='VIDEO'?'SRT yoki VTT fayl tanlang':'Bu playerda subtitr fayli qo‘llanmaydi';
   applyPlaybackRate();
   $('placeholder').classList.add('hidden');
   $('playState').textContent='Tayyor';
