@@ -1,0 +1,44 @@
+name: Node checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Check JavaScript syntax
+        run: |
+          node --check server.js
+          node --check auth.js
+          node --check public/app.js
+          node --check public/i18n.js
+      - name: Smoke test server startup and health endpoint
+        env:
+          PORT: 3187
+          DATA_DIR: /tmp/togetherwatch-test-data
+        run: |
+          node server.js > /tmp/togetherwatch.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3187/health; then
+              echo
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/togetherwatch.log
+          exit 1
