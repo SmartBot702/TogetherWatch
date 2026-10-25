@@ -1,10 +1,20 @@
 (function(){
 const $=id=>document.getElementById(id);
 const socket=io();
+let rtcIceServers=[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun.cloudflare.com:3478'}];
+fetch('/api/rtc-config',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(c=>{if(c&&Array.isArray(c.iceServers)&&c.iceServers.length)rtcIceServers=c.iceServers}).catch(()=>{});
 let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null,callStream=null,siteUrl=null,siteExpanded=false,screenOwner=null,hlsInstance=null,queueItems=[];const peers=new Map(),callPeers=new Map(),callReady=new Set(),pendingScreenIce=new Map(),pendingCallIce=new Map();
 
-socket.on('connect',()=>{$('connection').textContent='● Serverga ulandi'});
-socket.on('disconnect',()=>{$('connection').textContent='● Aloqa uzildi'});
+socket.on('connect',()=>{
+  $('connection').textContent='● Serverga ulandi';
+  if(roomId&&myName){$('connection').textContent='● Xonaga qayta ulanmoqda…';socket.emit('room:join',{roomId,name:myName})}
+});
+socket.on('disconnect',()=>{
+  $('connection').textContent='● Aloqa uzildi — qayta ulanish kutilmoqda';
+  for(const id of Array.from(peers.keys()))removePeer(id);
+  for(const id of Array.from(callPeers.keys()))removeCallPeer(id);
+  callReady.clear();
+});
 function name(){return $('nickname').value.trim().replace(/[<>]/g,'').slice(0,24)}
 function enter(kind){
   myName=name();
@@ -23,10 +33,13 @@ socket.on('room:joined',d=>{
   roomId=d.roomId;isHost=d.isHost;siteUrl=d.siteUrl||null;siteExpanded=Boolean(d.siteExpanded);screenOwner=d.screenOwner||null;renderSharedSite(siteUrl,siteExpanded);
   $('entry').classList.add('hidden');$('how').classList.add('hidden');$('workspace').classList.remove('hidden');
   $('roomCode').textContent=roomId;$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
-  $('loadVideo').disabled=false;$('youtubeUrl').disabled=false;$('mediaType').disabled=false;$('screenShare').disabled=!!screenOwner&&screenOwner!==socket.id;$('chat').innerHTML='';
+  $('loadVideo').disabled=false;$('youtubeUrl').disabled=false;$('mediaType').disabled=false;$('screenShare').disabled=!!screenOwner&&screenOwner!==socket.id;$('chat').replaceChildren();
   history.replaceState({},'',location.pathname+'?room='+roomId);
   renderQueue(d.queue||[]);
+  (d.chatHistory||[]).forEach(renderChatMessage);
   if(d.state&&(d.state.mediaType||d.state.videoId))loadMedia(normalizeState(d.state),d.state);
+  if(screenStream){screenOwner=socket.id;socket.emit('screen:started');}
+  if(callStream){callReady.clear();callReady.add(socket.id);socket.emit('rtc:ready',{ready:true});}
 });
 socket.on('room:role',d=>{
   isHost=d.isHost;$('role').textContent=isHost?'Xona egasi':'Ishtirokchi';
@@ -47,10 +60,11 @@ socket.on('room:people',list=>{
 function system(t){const e=document.createElement('div');e.className='system';e.textContent=t;$('chat').append(e);scroll()}
 function scroll(){$('chat').scrollTop=$('chat').scrollHeight}
 socket.on('room:system',system);
-socket.on('chat:message',m=>{
+function renderChatMessage(m){
   const e=document.createElement('div');e.className='message';const b=document.createElement('b');b.textContent=m.name;
-  const p=document.createElement('p');p.textContent=m.text;e.append(b,p);$('chat').append(e);scroll();
-});
+  const p=document.createElement('p');p.textContent=m.text;e.append(b,p);$('chat').append(e);
+}
+socket.on('chat:message',m=>{renderChatMessage(m);scroll()});
 $('chatForm').onsubmit=e=>{e.preventDefault();const text=$('chatText').value.trim();if(text&&roomId){socket.emit('chat:send',{text});$('chatText').value=''}};
 let renderedSiteUrl=null;
 function renderSharedSite(url,expanded){
@@ -274,7 +288,7 @@ async function flushIce(kind,peerId,pc){
 }
 function createPeer(peerId,initiator){
   if(peers.has(peerId))return peers.get(peerId);
-  const pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+  const pc=new RTCPeerConnection({iceServers:rtcIceServers});
   peers.set(peerId,pc);
   if(screenStream&&initiator)screenStream.getTracks().forEach(track=>pc.addTrack(track,screenStream));
   pc.onicecandidate=e=>{if(e.candidate&&roomId)socket.emit('rtc:ice',{to:peerId,kind:'screen',candidate:e.candidate})};
@@ -330,7 +344,7 @@ socket.on('rtc:ice',async p=>{
 
 function callPeer(peerId,initiator){
   if(callPeers.has(peerId))return callPeers.get(peerId);
-  const pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+  const pc=new RTCPeerConnection({iceServers:rtcIceServers});
   callPeers.set(peerId,pc);
   if(callStream&&initiator)callStream.getTracks().forEach(track=>pc.addTrack(track,callStream));
   pc.onicecandidate=e=>{if(e.candidate)socket.emit('rtc:ice',{to:peerId,kind:'call',candidate:e.candidate})};
