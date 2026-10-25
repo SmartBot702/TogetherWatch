@@ -145,7 +145,8 @@ function loadMedia(next,state){
       player=new Vimeo.Player(frame);
       player.ready().then(()=>markReady(state)).catch(()=>{$('videoError').textContent='Vimeo videosini ochib bo‘lmadi yoki video maxfiy.'});
       player.on('play',()=>{if(!remote&&Date.now()>=remoteUntil)getTimeAsync().then(t=>emitPlayback(true,t))});
-      player.on('pause',()=>{if(!remote&&Date.now()>=remoteUntil)getTimeAsync().then(t=>emitPlayback(false,t))});\n       player.on('ended',()=>{if(isHost)socket.emit('queue:next')});
+      player.on('pause',()=>{if(!remote&&Date.now()>=remoteUntil)getTimeAsync().then(t=>emitPlayback(false,t))});
+       player.on('ended',()=>{if(isHost)socket.emit('queue:next')});
     };init();
   }else if(next.mediaType==='file'||next.mediaType==='hls'){
     const video=document.createElement('video');video.id='filePlayer';video.playsInline=true;video.preload='auto';video.controls=false;video.style.width='100%';video.style.height='100%';video.style.position='absolute';video.style.inset='0';if(next.mediaType==='hls')video.crossOrigin='anonymous';$('player').append(video);player=video;
@@ -158,7 +159,8 @@ function loadMedia(next,state){
     video.addEventListener('error',()=>{$('videoError').textContent='Videoni ochib bo‘lmadi. Havola ochiq bo‘lishi va sayt CORS orqali ijroga ruxsat berishi kerak.'});
     video.addEventListener('play',()=>{if(!remote&&Date.now()>=remoteUntil)emitPlayback(true,video.currentTime)});
     video.addEventListener('pause',()=>{if(!remote&&Date.now()>=remoteUntil&&!video.ended)emitPlayback(false,video.currentTime)});
-    video.addEventListener('seeked',()=>{if(!remote&&Date.now()>=remoteUntil)emitPlayback(!video.paused,video.currentTime)});\n     video.addEventListener('ended',()=>{if(isHost)socket.emit('queue:next')});
+    video.addEventListener('seeked',()=>{if(!remote&&Date.now()>=remoteUntil)emitPlayback(!video.paused,video.currentTime)});
+     video.addEventListener('ended',()=>{if(isHost)socket.emit('queue:next')});
   }
 }
 function getTime(){
