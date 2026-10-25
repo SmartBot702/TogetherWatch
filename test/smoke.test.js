@@ -156,7 +156,7 @@ test('uploaded videos can be removed by the room host and disappear for everyone
 test('Google Drive limitations are documented for users', () => {
   const readme = read('README.md');
   assert.match(readme, /Google Drive video havolalari/);
-  assert.match(readme, /Play\/Pause, seek va vaqtni sinxron boshqarish hozircha qo‘llanmaydi/);
+  assert.match(readme, /Drive preview iframe’ining ichki Play\/Pause va vaqtini TogetherWatch bevosita boshqara olmaydi/);
 });
 
 test('large movie upload uses acknowledged chunks and byte-range streaming', () => {
