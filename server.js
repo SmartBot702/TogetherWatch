@@ -380,18 +380,33 @@ function browserInput(room, socket, payload) {
 
 io.on('connection', socket => {
   socket.on('room:create', p => {
-    leave(socket);
     const n = cleanName(p && p.name);
     if (!n) return error(socket, 'Ismingizni kiriting.');
+    // Validate first so a malformed create request cannot eject a user from their current room.
+    leave(socket);
     let id;
     do { id = makeCode(); } while (rooms.has(id));
     enter(socket, id, n, true, { title: cleanRoomTitle(p && p.title), theme: cleanRoomTheme(p && p.theme), isPublic: Boolean(p && p.isPublic) });
   });
   socket.on('room:join', p => {
-    leave(socket);
     const id = String(p && p.roomId || '').toUpperCase();
+    const n = cleanName(p && p.name);
     if (!/^[A-Z0-9]{6}$/.test(id)) return error(socket, 'Xona kodi noto‘g‘ri.');
-    enter(socket, id, cleanName(p && p.name), false);
+    if (!n) return error(socket, 'Ismingizni kiriting.');
+    let target = rooms.get(id);
+    if (target && !target.members.size && target.emptyAt && Date.now() - target.emptyAt > 6 * 60 * 60 * 1000) {
+      discardRoom(id);
+      target = null;
+    }
+    // A failed room switch must leave the current room untouched.
+    if (!target) return error(socket, 'Xona topilmadi. Kodni tekshiring.');
+    const alreadyThere = target.members.has(socket.id);
+    if (target.members.size - (alreadyThere ? 1 : 0) >= 20) return error(socket, 'Xona to‘la (maksimal 20 kishi).');
+    if (Array.from(target.members.values()).some(m => m.id !== socket.id && m.name.toLowerCase() === n.toLowerCase())) {
+      return error(socket, 'Bu ism allaqachon ishlatilmoqda.');
+    }
+    leave(socket);
+    enter(socket, id, n, false);
   });
 
   socket.on('activity:launch', p => {
