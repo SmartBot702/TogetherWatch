@@ -103,7 +103,10 @@ async function saveRoomSnapshot(room) {
     theme: ['violet','ocean','sunset','emerald'].includes(room.theme) ? room.theme : 'violet',
     isPublic: Boolean(room.isPublic),
     links: Array.isArray(room.links) ? room.links.slice(0, 30) : [],
-    boardStrokes: Array.isArray(room.boardStrokes) ? room.boardStrokes.slice(-2000) : []
+    boardStrokes: Array.isArray(room.boardStrokes) ? room.boardStrokes.slice(-2000) : [],
+    game: room.game || { board: Array(9).fill(null), turn: 'X', winner: null, moves: 0 },
+    activeGame: room.activeGame === 'connect4' ? 'connect4' : 'tictactoe',
+    connectFour: room.connectFour || { board: Array.from({length:6},()=>Array(7).fill(null)), turn: 'R', winner: null, moves: 0 }
   };
   await pool.query('INSERT INTO togetherwatch_rooms (room_id, payload, empty_at, updated_at) VALUES ($1, $2::jsonb, $3, now()) ON CONFLICT (room_id) DO UPDATE SET payload = EXCLUDED.payload, empty_at = EXCLUDED.empty_at, updated_at = now()', [room.id, JSON.stringify(payload), room.emptyAt || null]);
 }
