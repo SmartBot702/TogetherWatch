@@ -87,8 +87,9 @@ function fail(res, status, error) { return res.status(status).json({ ok: false, 
 async function loadRoomSnapshots() {
   if (!pool) return [];
   await pool.query('CREATE TABLE IF NOT EXISTS togetherwatch_rooms (room_id varchar(6) PRIMARY KEY, payload jsonb NOT NULL, empty_at bigint, updated_at timestamptz NOT NULL DEFAULT now())');
-  await pool.query('DELETE FROM togetherwatch_rooms WHERE empty_at IS NOT NULL AND empty_at <= $1', [Date.now() - 6 * 60 * 60 * 1000]);
-  const result = await pool.query('SELECT room_id, payload, empty_at FROM togetherwatch_rooms WHERE empty_at IS NULL OR empty_at > $1 ORDER BY updated_at DESC', [Date.now() - 6 * 60 * 60 * 1000]);
+  const cutoff = Date.now() - 6 * 60 * 60 * 1000;
+  await pool.query("DELETE FROM togetherwatch_rooms WHERE (empty_at IS NOT NULL AND empty_at <= $1) OR (empty_at IS NULL AND updated_at <= now() - interval '6 hours')", [cutoff]);
+  const result = await pool.query("SELECT room_id, payload, empty_at FROM togetherwatch_rooms WHERE (empty_at IS NULL AND updated_at > now() - interval '6 hours') OR empty_at > $1 ORDER BY updated_at DESC", [cutoff]);
   return result.rows.map(row => ({ id: row.room_id, payload: row.payload, emptyAt: row.empty_at == null ? null : Number(row.empty_at) }));
 }
 async function saveRoomSnapshot(room) {
