@@ -57,6 +57,16 @@ test('playback speed control supports native, YouTube and Vimeo players', () => 
   assert.match(app, /\$\('playbackRate'\)\.disabled=true/);
 });
 
+test('voice chat retries transient disconnects with a bounded backoff', () => {
+  const app = read('public/app.js');
+  assert.match(app, /function scheduleCallPeerRetry\(peerId\)/);
+  assert.match(app, /attempts>=3/);
+  assert.match(app, /1200\*Math\.pow\(2,attempts\)/);
+  assert.match(app, /callRetryTimers/);
+  assert.match(app, /callRetryCounts\.delete\(peerId\)/);
+  assert.match(app, /Aloqa uzildi — qayta ulanishga urinilmoqda/);
+});
+
 test('local subtitle controls support SRT and VTT for native video players', () => {
   const html = read('public/index.html');
   const app = read('public/app.js');
