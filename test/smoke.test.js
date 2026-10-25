@@ -39,8 +39,8 @@ test('VK Video and OK links are parsed into platform embed players', () => {
   const server = read('server.js');
   assert.match(app, /mediaType:'vk',mediaId,mediaUrl:'https:\/\/vk\.com\/video_ext\.php/);
   assert.match(app, /mediaType:'ok',mediaId:match\[1\],mediaUrl:'https:\/\/ok\.ru\/videoembed\//);
-  assert.match(app, /next\.mediaType==='vk'\|\|next\.mediaType==='ok'/);
-  assert.match(app, /frame\.title=next\.mediaType==='vk'\?'VK Video':'OK video'/);
+  assert.match(app, /next\.mediaType==='vk'\|\|next\.mediaType==='ok'\|\|next\.mediaType==='rutube'/);
+  assert.match(app, /frame\.title=next\.mediaType==='vk'\?'VK Video':next\.mediaType==='ok'\?'OK video':'Rutube video'/);
   assert.match(server, /if \(type === 'vk'\)/);
   assert.match(server, /if \(type === 'ok'\)/);
 });
