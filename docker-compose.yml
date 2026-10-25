@@ -5,7 +5,7 @@ services:
       - "3000:3000"
     environment:
       PORT: "3000"
-      BROWSER_WS_ENDPOINT: "ws://browserless:3000?token=local-dev-token"
+      BROWSER_WS_ENDPOINT: "ws://browserless:3000?token=${BROWSER_TOKEN:?Set BROWSER_TOKEN in .env or environment}"
       # Optional: set DATABASE_URL and TURN_* for persistence and WebRTC.
     depends_on:
       - browserless
@@ -13,7 +13,7 @@ services:
   browserless:
     image: browserless/chromium:latest
     environment:
-      TOKEN: "local-dev-token"
+      TOKEN: "${BROWSER_TOKEN:?Set BROWSER_TOKEN in .env or environment}"
       MAX_CONCURRENT_SESSIONS: "5"
       CONNECTION_TIMEOUT: "60000"
     expose:
