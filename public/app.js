@@ -446,7 +446,7 @@ function setSection(section){
   if(section==='profile')$('accountPanel').classList.remove('hidden');
 }
 $('navHome').onclick=()=>setSection('home');
-$('navFriends').onclick=()=>{setSection('friends');if(!currentAccount)$('friendsMessage').textContent='Do‘stlarni qidirish uchun akkauntga kiring.'};
+$('navFriends').onclick=()=>{setSection('friends');if(!currentAccount)$('friendsMessage').textContent='Do‘stlarni qidirish uchun akkauntga kiring.';else refreshFriends()};
 $('navWatch').onclick=()=>setSection('watch');
 $('navProfile').onclick=()=>setSection('profile');
 async function refreshFriends(){
@@ -478,6 +478,7 @@ function showAccount(user){
     if(user.avatar){const img=document.createElement('img');img.src=user.avatar;img.alt='';img.onerror=()=>img.remove();$('accountAvatar').replaceChildren(img)}
     else $('accountAvatar').textContent=(user.displayName||user.username||'TW').slice(0,2).toUpperCase();
     $('nickname').value=user.displayName||user.username;
+    if(activeSection==='friends')refreshFriends();
     if(activeSection==='friends')refreshFriends();
   }
 }
