@@ -449,7 +449,7 @@ $('navHome').onclick=()=>setSection('home');
 $('navFriends').onclick=()=>{setSection('friends');if(!currentAccount)$('friendsMessage').textContent='Do‘stlarni qidirish uchun akkauntga kiring.'};
 $('navWatch').onclick=()=>setSection('watch');
 $('navProfile').onclick=()=>setSection('profile');
-function showAccount(user){
+async function refreshFriends(){\n  if(!currentAccount)return;\n  try{const r=await fetch('/api/friends',{credentials:'same-origin'});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Xatolik');\n    $('friendLists').replaceChildren();\n    const heading=(label)=>{const h=document.createElement('h3');h.className='title';h.style.marginTop='14px';h.textContent=label;$('friendLists').append(h)};\n    heading('Do‘stlar');\n    if(!d.friends.length){const p=document.createElement('div');p.className='muted small';p.textContent='Hozircha do‘st yo‘q.';$('friendLists').append(p)}\n    d.friends.forEach(u=>{const el=document.createElement('div');el.className='person';el.textContent=u.displayName+'  @'+u.username;$('friendLists').append(el)});\n    heading('Kelgan so‘rovlar');\n    if(!d.incoming.length){const p=document.createElement('div');p.className='muted small';p.textContent='Yangi so‘rov yo‘q.';$('friendLists').append(p)}\n    d.incoming.forEach(item=>{const row=document.createElement('div');row.className='row';row.style.flexWrap='wrap';const label=document.createElement('span');label.textContent=item.user.displayName+' @'+item.user.username;const yes=document.createElement('button');yes.className='btn primary';yes.textContent='Qabul qilish';yes.onclick=()=>respondFriend(item.id,true);const no=document.createElement('button');no.className='btn';no.textContent='Rad etish';no.onclick=()=>respondFriend(item.id,false);row.append(label,yes,no);$('friendLists').append(row)});\n  }catch(e){$('friendsMessage').textContent=e.message||'Do‘stlar yuklanmadi.'}\n}\nasync function respondFriend(requestId,accept){try{const r=await fetch('/api/friends/respond',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({requestId,accept})});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Xatolik');$('friendsMessage').textContent=accept?'Do‘st qo‘shildi.':'So‘rov rad etildi.';await refreshFriends()}catch(e){$('friendsMessage').textContent=e.message||'Xatolik'} }\nfunction showAccount(user){
   currentAccount=user||null;
   $('authState').textContent=user?'Akkaunt faol':'Mehmon';
   $('accountSignedIn').classList.toggle('hidden',!user);
@@ -463,7 +463,7 @@ function showAccount(user){
     $('accountAvatar').textContent=(user.displayName||user.username||'TW').slice(0,2).toUpperCase();
     if(user.avatar){const img=document.createElement('img');img.src=user.avatar;img.alt='';img.onerror=()=>img.remove();$('accountAvatar').replaceChildren(img)}
     else $('accountAvatar').textContent=(user.displayName||user.username||'TW').slice(0,2).toUpperCase();
-    $('nickname').value=user.displayName||user.username;
+    $('nickname').value=user.displayName||user.username;\n    if(activeSection==='friends')refreshFriends();
   }
 }
 function setAuthMode(mode){
@@ -508,10 +508,10 @@ $('searchUsers').onclick=async()=>{
     const response=await fetch('/api/users/search?q='+encodeURIComponent(q),{credentials:'same-origin'});const data=await response.json();
     if(!response.ok||!data.ok)throw new Error(data.error||'Qidiruv amalga oshmadi.');
     $('friendsMessage').textContent=data.users.length?String(data.users.length)+' ta foydalanuvchi topildi.':'Foydalanuvchi topilmadi.';
-    data.users.forEach(user=>{const card=document.createElement('div');card.className='person';card.style.borderRadius='12px';card.style.padding='12px';const strong=document.createElement('strong');strong.textContent=user.displayName;const small=document.createElement('div');small.className='muted small';small.textContent='@'+user.username;card.append(strong,small);$('userResults').append(card)});
+    data.users.forEach(user=>{const card=document.createElement('div');card.className='person';card.style.borderRadius='12px';card.style.padding='12px';const strong=document.createElement('strong');strong.textContent=user.displayName;const small=document.createElement('div');small.className='muted small';small.textContent='@'+user.username;const add=document.createElement('button');add.className='btn primary';add.textContent='Do‘st qo‘shish';add.style.marginTop='8px';add.onclick=async()=>{add.disabled=true;try{const r=await fetch('/api/friends/request',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({username:user.username})});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Xatolik');$('friendsMessage').textContent='Do‘stlik so‘rovi yuborildi.'}catch(e){$('friendsMessage').textContent=e.message||'So‘rov yuborilmadi.';add.disabled=false}};card.append(strong,small,add);$('userResults').append(card)});
   }catch(err){$('friendsMessage').textContent=err.message||'Qidiruvda xato.'}
 };
-loadAccount();
+$('userSearch').addEventListener('keydown',e=>{if(e.key==='Enter')$('searchUsers').click()});\nloadAccount();
 
 const r=new URLSearchParams(location.search).get('room');if(r)$('roomInput').value=r.toUpperCase();
 $('year').textContent=new Date().getFullYear();
