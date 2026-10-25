@@ -434,7 +434,7 @@ function parseMedia(raw){
       const parts=u.pathname.split('/').filter(Boolean);id=parts.find(x=>/^\d{1,15}$/.test(x))||null;
       if(id)return{mediaType:'vimeo',mediaId:id,mediaUrl:'https://player.vimeo.com/video/'+id,videoId:null};
     }
-    if(($('mediaType').value==='auto'||$('mediaType').value==='file')&&/\.(mp4|webm)$/i.test(u.pathname))return{mediaType:'file',mediaId:u.href,mediaUrl:u.href,videoId:null};
+    if(($('mediaType').value==='auto'&&/\.(mp4|webm)$/i.test(u.pathname))||$('mediaType').value==='file')return{mediaType:'file',mediaId:u.href,mediaUrl:u.href,videoId:null};
     if(($('mediaType').value==='auto'||$('mediaType').value==='hls')&&/\.m3u8$/i.test(u.pathname))return{mediaType:'hls',mediaId:u.href,mediaUrl:u.href,videoId:null};
     return null;
   }catch(e){return null}
