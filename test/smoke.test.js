@@ -57,6 +57,17 @@ test('playback speed control supports native, YouTube and Vimeo players', () => 
   assert.match(app, /\$\('playbackRate'\)\.disabled=true/);
 });
 
+test('room chat supports quoted replies', () => {
+  const app = read('public/app.js');
+  const server = read('server.js');
+  assert.match(server, /typeof p\.replyTo === 'string'/);
+  assert.match(server, /replyTo: \{ id: reply\.id, name: reply\.name, text: reply\.text\.slice\(0, 180\) \}/);
+  assert.match(app, /function setChatReply\(message\)/);
+  assert.match(app, /textContent='Javob berish'/);
+  assert.match(app, /replyTo:replyingTo\.id/);
+  assert.match(app, /m\.replyTo\.name/);
+});
+
 test('room chat supports author-only editing and deletion', () => {
   const app = read('public/app.js');
   const server = read('server.js');
