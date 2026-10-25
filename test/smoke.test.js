@@ -124,6 +124,15 @@ test('two clients share a room, activity selection, and chat in realtime', async
     const guestRoom = await guestJoinedPromise;
     assert.equal(guestRoom.roomId, hostRoom.roomId);
 
+    // A failed room switch must not silently remove the guest from the active room.
+    const failedJoinPromise = waitForEvent(guest, 'room:error');
+    guest.emit('room:join', { roomId: 'ZZZZZZ', name: 'GuestTest' });
+    await failedJoinPromise;
+    const stillInRoomPromise = waitForEvent(host, 'chat:message');
+    guest.emit('chat:send', { text: 'still-in-room-check' });
+    const stillInRoom = await stillInRoomPromise;
+    assert.equal(stillInRoom.text, 'still-in-room-check');
+
     const activityPromise = waitForEvent(guest, 'activity:launched');
     host.emit('activity:launch', { activity: 'board' });
     const activity = await activityPromise;
