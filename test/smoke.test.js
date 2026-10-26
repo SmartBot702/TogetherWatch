@@ -107,6 +107,15 @@ test('room chat supports author-only editing and deletion', () => {
   assert.match(app, /O‘chirish/);
 });
 
+test('voice chat exposes TURN configuration guidance when relay is not configured', () => {
+  const app = read('public/app.js');
+  const server = read('server.js');
+  assert.match(server, /turnConfigured: iceServers\\.length > 2/);
+  assert.match(app, /rtcConfigLoaded=false,rtcTurnConfigured=false/);
+  assert.match(app, /TURN server sozlanmagan/);
+  assert.match(app, /TURN_URLS, TURN_USERNAME va TURN_CREDENTIAL/);
+});
+
 test('voice chat retries transient disconnects with a bounded backoff', () => {
   const app = read('public/app.js');
   assert.match(app, /function scheduleCallPeerRetry\(peerId\)/);
