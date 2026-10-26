@@ -110,7 +110,7 @@ test('room chat supports author-only editing and deletion', () => {
 test('voice chat exposes TURN configuration guidance when relay is not configured', () => {
   const app = read('public/app.js');
   const server = read('server.js');
-  assert.match(server, /turnConfigured: iceServers\\.length > 2/);
+  assert.match(server, /turnConfigured: iceServers\.length > 2/);
   assert.match(app, /rtcConfigLoaded=false,rtcTurnConfigured=false/);
   assert.match(app, /TURN server sozlanmagan/);
   assert.match(app, /TURN_URLS, TURN_USERNAME va TURN_CREDENTIAL/);
