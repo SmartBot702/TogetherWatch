@@ -1,8 +1,8 @@
 (function(){
 const $=id=>document.getElementById(id);
 const socket=io();
-let rtcIceServers=[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun.cloudflare.com:3478'}];
-fetch('/api/rtc-config',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(c=>{if(c&&Array.isArray(c.iceServers)&&c.iceServers.length)rtcIceServers=c.iceServers}).catch(()=>{});
+let rtcIceServers=[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun.cloudflare.com:3478'}],rtcConfigLoaded=false,rtcTurnConfigured=false;
+fetch('/api/rtc-config',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(c=>{if(c&&Array.isArray(c.iceServers)&&c.iceServers.length)rtcIceServers=c.iceServers;rtcTurnConfigured=!!(c&&c.turnConfigured);rtcConfigLoaded=true}).catch(()=>{rtcConfigLoaded=true});
 let roomId=null,myName='',isHost=false,player=null,playerReady=false,media=null,remote=false,remoteUntil=0,roomPeople=[],screenStream=null,callStream=null,siteUrl=null,siteExpanded=false,screenOwner=null,hlsInstance=null,queueItems=[],volume=1,muted=false,seekDuration=0,seeking=false,localFile=null,localFileId=null,localObjectUrl=null,subtitleObjectUrl=null,subtitleTrack=null,subtitleVttText=null,subtitleFileName=null,pendingSharedSubtitle=null,latestPlaybackState=null,endedQueueAdvanceKey=null;const peers=new Map(),callPeers=new Map(),callReady=new Set(),pendingScreenIce=new Map(),pendingCallIce=new Map(),callDisconnectTimers=new Map(),callRetryTimers=new Map(),callRetryCounts=new Map();
 
 socket.on('connect',()=>{
@@ -1166,7 +1166,7 @@ $('startCall').onclick=async()=>{
   $('callControls').classList.remove('hidden');updateCallControls();
   $('localCallWrap').classList.remove('hidden');
   $('startCall').classList.add('hidden');$('stopCall').classList.remove('hidden');
-  $('callStatus').textContent='Suhbat yoqildi. Boshqa ishtirokchilar ham suhbatga qo‘shilganda ulanadi.';
+  $('callStatus').textContent='Suhbat yoqildi. Boshqa ishtirokchilar ham suhbatga qo‘shilganda ulanadi.'+(rtcConfigLoaded&&!rtcTurnConfigured?' TURN server sozlanmagan: ayrim tarmoqlarda aloqa ulanmasligi mumkin. VPS’da TURN_URLS, TURN_USERNAME va TURN_CREDENTIAL ni sozlang.':'');
   callReady.add(socket.id);socket.emit('rtc:ready',{ready:true});
   await syncCallPeers();
 };
